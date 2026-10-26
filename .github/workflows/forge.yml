@@ -7,6 +7,7 @@ name: Forge HTML -> VST3/AU
 #   4. publishes a GitHub Release with .pkg installers
 on:
   push:
+    branches: [ main ]          # tags (releases such as deps-jsc) never start a build
     paths: [ 'inbox/**', 'engine/**', 'runtime/**', 'forge/**', 'tests/**', '.github/workflows/forge.yml' ]
   workflow_dispatch:
     inputs:
