@@ -8,6 +8,8 @@
  *   GET  /api/health                 -> { ok, repo, branch, git, ssh, key, clone }
  *   POST /api/generate               -> { slug, path, sha, baseTags }   body: { name, html?, url? }
  *   GET  /api/tags?slug=x            -> { tags: [...] }   (ls-remote; works even when api.github.com quota is gone)
+ *   GET  /api/release?tag=x-build-7    -> release-like object parsed from github.com (no API quota involved)
+ *   GET  /api/releases                 -> [{ tag_name, html_url }] from ls-remote tags, newest build number first
  *   GET  /api/text?url=https://github.com/<repo>/releases/download/...  -> proxied text (REPORT.md / SHA256SUMS)
  */
 const http = require('http');
@@ -103,6 +105,21 @@ async function generate({ name, html, url }) {
   });
 }
 
+async function releaseFromTag(tag) {
+  const html_url = `https://github.com/${REPO}/releases/tag/${tag}`;
+  const r = await fetch(`https://github.com/${REPO}/releases/expanded_assets/${tag}`, { headers: { 'User-Agent': 'html2plugin-web' } });
+  if (!r.ok) throw Object.assign(new Error(`release ${tag}: github.com ${r.status}`), { status: 404 });
+  const page = await r.text();
+  const assets = [];
+  const re = /<a href="(\/[^"]+\/releases\/download\/[^"]+)"[^>]*>\s*<span class="text-bold">([^<]+)<\/span>[\s\S]*?class="color-fg-muted text-right[^"]*">([\d.]+ (?:Bytes|KB|MB|GB))<\/span>/g;
+  let m; while ((m = re.exec(page))) {
+    const [, href, name, sizeTxt] = m; const [num, unit] = sizeTxt.split(' ');
+    const mult = { Bytes: 1, KB: 1024, MB: 1048576, GB: 1073741824 }[unit] || 1;
+    assets.push({ name: name.trim(), browser_download_url: 'https://github.com' + href, size: Math.round(parseFloat(num) * mult) });
+  }
+  return { tag_name: tag, html_url, assets, id: tag.replace(/[^a-z0-9]/gi, '') };
+}
+
 function send(res, status, obj, type = 'application/json') {
   res.writeHead(status, { 'Content-Type': type + '; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Cache-Control': 'no-store' });
   res.end(type === 'application/json' ? JSON.stringify(obj) : obj);
@@ -137,6 +154,16 @@ const server = http.createServer(async (req, res) => {
     if (u.pathname === '/api/tags') {
       const slug = slugify(u.searchParams.get('slug'));
       return send(res, 200, { tags: await lsTags(slug ? `${slug}-build-` : '') });
+    }
+    if (u.pathname === '/api/release') {
+      const tag = String(u.searchParams.get('tag') || '').replace(/[^a-z0-9-]/gi, '');
+      if (!tag) return send(res, 400, { error: 'tag required' });
+      return send(res, 200, await releaseFromTag(tag));
+    }
+    if (u.pathname === '/api/releases') {
+      const tags = (await lsTags('')).filter(t => /-build-\d+$/.test(t));
+      tags.sort((a, b) => Number(b.split('-').pop()) - Number(a.split('-').pop()));
+      return send(res, 200, tags.map(t => ({ tag_name: t, html_url: `https://github.com/${REPO}/releases/tag/${t}`, id: t.replace(/[^a-z0-9]/gi, ''), lazy: true })));
     }
     if (u.pathname === '/api/text') {
       const target = u.searchParams.get('url') || '';

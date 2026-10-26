@@ -257,7 +257,7 @@ $('go').onclick = async () => {
       } else {
         try {
           const { tags } = await api(`/api/tags?slug=${slug}`); const fresh = tags.filter(t => !baseTags.has(t));
-          if (fresh.length) { done = true; const tag = fresh.sort((a, b) => Number(b.split('-').pop()) - Number(a.split('-').pop()))[0]; log(`release tag ${tag} appeared`); rel = await findRelease(tag, 3).catch(() => null) || { tag_name: tag, html_url: `https://github.com/${REPO}/releases/tag/${tag}`, assets: [] }; for (const k of STEPS.map(x => x[0])) state[k] = 'ok'; }
+          if (fresh.length) { done = true; const tag = fresh.sort((a, b) => Number(b.split('-').pop()) - Number(a.split('-').pop()))[0]; log(`release tag ${tag} appeared`); rel = (await findRelease(tag, 3)) || { tag_name: tag, html_url: `https://github.com/${REPO}/releases/tag/${tag}`, assets: [] }; for (const k of STEPS.map(x => x[0])) state[k] = 'ok'; }
           else if (lastMsg !== 'building') { lastMsg = 'building'; log('building — live steps unavailable until GitHub\'s hourly quota resets; the release will be detected when it lands'); }
         } catch (e) { log(e.message, 'bad'); }
       }
@@ -267,7 +267,14 @@ $('go').onclick = async () => {
   } catch (e) { log(String(e.message || e), 'bad'); for (const k of Object.keys(state)) if (state[k] === 'run') state[k] = 'bad'; renderSteps(state); }
   $('go').disabled = false;
 };
-async function findRelease(tag, tries) { for (let i = 0; i < tries; i++) { try { return await gh(`/repos/${REPO}/releases/tags/${tag}`); } catch (e) { if (e.rateLimited) return null; await sleep(5000); } } return null; }
+async function findRelease(tag, tries) {
+  for (let i = 0; i < tries; i++) {
+    if (Date.now() < rateLimitedUntil) { try { return await api(`/api/release?tag=${encodeURIComponent(tag)}`); } catch (e) { } }
+    else { try { return await gh(`/repos/${REPO}/releases/tags/${tag}`); } catch (e) { if (e.rateLimited) continue; try { return await api(`/api/release?tag=${encodeURIComponent(tag)}`); } catch (e2) { } } }
+    await sleep(5000);
+  }
+  return null;
+}
 
 /* ---------- downloads (public release assets: plain links) ---------- */
 function pick(rel, rx) { return (rel.assets || []).find(a => rx.test(a.name)); }
@@ -289,11 +296,17 @@ function wireDownloads(root, rel) {
 /* ---------- history ---------- */
 async function loadHistory() {
   try {
-    const rels = await gh(`/repos/${REPO}/releases?per_page=30`);
+    let rels;
+    try { rels = await gh(`/repos/${REPO}/releases?per_page=30`); } catch (e) { rels = await api('/api/releases'); }
     if (!rels.length) { $('hist').innerHTML = '<div class="empty">No builds yet.</div>'; return; }
-    $('hist').innerHTML = rels.map(r => { const m = r.tag_name.match(/^(.*)-build-(\d+)$/) || [, r.tag_name, '']; const d = new Date(r.published_at || r.created_at);
-      return `<div class="row" data-id="${r.id}"><b>${esc(m[1])}</b><span class="mut">build ${esc(m[2])} · ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span class="sp"></span><button data-open="${r.id}">Downloads</button></div><div class="rowbody" id="rb-${r.id}" style="display:none;margin:-2px 0 6px"></div>`; }).join('');
-    $('hist').querySelectorAll('button[data-open]').forEach(b => b.onclick = () => { const rel = rels.find(x => String(x.id) === b.dataset.open); const box = $('rb-' + rel.id); const open = box.style.display !== 'none'; box.style.display = open ? 'none' : 'block'; if (!open) { box.innerHTML = downloadsHtml(rel); wireDownloads(box, rel); } });
+    $('hist').innerHTML = rels.map(r => { const m = r.tag_name.match(/^(.*)-build-(\d+)$/) || [, r.tag_name, '']; const d = r.published_at || r.created_at ? new Date(r.published_at || r.created_at) : null;
+      return `<div class="row" data-id="${r.id}"><b>${esc(m[1])}</b><span class="mut">build ${esc(m[2])}${d ? ` · ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</span><span class="sp"></span><button data-open="${r.id}">Downloads</button></div><div class="rowbody" id="rb-${r.id}" style="display:none;margin:-2px 0 6px"></div>`; }).join('');
+    $('hist').querySelectorAll('button[data-open]').forEach(b => b.onclick = async () => {
+      let rel = rels.find(x => String(x.id) === b.dataset.open); const box = $('rb-' + rel.id); const open = box.style.display !== 'none'; box.style.display = open ? 'none' : 'block';
+      if (open) return;
+      if (rel.lazy) { box.innerHTML = '<div class="empty">loading…</div>'; try { const full = await api(`/api/release?tag=${encodeURIComponent(rel.tag_name)}`); Object.assign(rel, full, { lazy: false }); } catch (e) { } }
+      box.innerHTML = downloadsHtml(rel); wireDownloads(box, rel);
+    });
   } catch (e) { $('hist').innerHTML = `<div class="empty">${esc(e.message)} — <a href="https://github.com/${REPO}/releases" target="_blank" rel="noopener">open the releases page ↗</a></div>`; }
 }
 </script>

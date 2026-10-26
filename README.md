@@ -11,9 +11,9 @@ The page is not rewritten. Inside the plugin:
 
 ## Use
 
-1. Open `web/index.html` (or GitHub Pages of this repo), paste the page, give it a slug, click **Build on GitHub**. Needs a fine-grained token for this repo (Contents RW, Actions R, Workflows RW).
+1. **Web app** (`web/`): paste the page, hit **Generate VST3 + AU**, download when the build lands (~9–12 min). No login or token: the backend (`web/server.js`) commits to `inbox/` with its own repo-scoped deploy key (`web/.secrets/deploy_key`, git-ignored). Build status is read from the public GitHub API from your browser (60 req/h; when that runs out the app falls back to tag detection through the backend and still finds the release). Run it yourself: `cd web && node server.js` (port 8000) and open `public/index.html` from a local server.
 2. Or just commit the page to `inbox/<slug>.html` (or a URL to `inbox/<slug>.url`) and push.
-3. ~25 minutes later a Release `<slug>-build-N` appears with `<Name>-Installer-VST3+AU.pkg`, zips, `REPORT.md` and SHA256SUMS.
+3. A Release `<slug>-build-N` appears with `<Name>-VST3-Installer.pkg`, `<Name>-AU-Installer.pkg`, `<Name>-Installer-VST3+AU.pkg`, zips, `REPORT.md` and SHA256SUMS.
 
 Local: `npm i && node forge/index.js page.html --out build/x --slug x && node tests/golden.js build/x`, then build `build/x` with CMake + Xcode on a Mac.
 
@@ -21,11 +21,11 @@ Local: `npm i && node forge/index.js page.html --out build/x --slug x && node te
 
 If a plugin loads but sounds like a straight wire, the JS engine failed and the plugin fell back to pass-through on purpose (never silence). The reason is in `~/Library/Logs/html2plugin/<slug>.log` (and on stderr of the host). CI runs the same check: HostTest fails on bit-exact pass-through, and `[h2p ...]` log lines appear in the HostTest step.
 
-## Measured on CI (ANALOGEXACT, build 7)
+## Measured on CI (ANALOGEXACT, builds 7–8)
 
 - Golden master: plugin −22.07 dBFS / THD 1.420 % vs Node −22.07 dBFS / 1.420 % (1 kHz at −20 dBFS, 48 k, block 512), 8-point parameter sweep within tolerance, VST3 and AU.
 - auval passed, pluginval strictness 10 passed (VST3 + AU), installer tested, page-built graph matches the captured graph within 0.6 dB, DSP keeps running with the editor closed.
-- CPU: ~35 % of one core on the shared macos-14 runner for this (heavy, Jiles–Atherton) model; `JSC_useJIT=false` changed nothing, so JIT state inside the host is unconfirmed. Expect less on a desktop M-series machine (estimate, not measured).
+- CPU: 35 % (build 7) to 56–62 % (build 8) of one core on the shared macos-14 runner for this (heavy, Jiles–Atherton) model — runner-to-runner variance is large; `JSC_useJIT=false` changed nothing, so JIT state inside the host is unconfirmed. Expect less on a desktop M-series machine (estimate, not measured).
 
 ## Limits (honest list)
 
