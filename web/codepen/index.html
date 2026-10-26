@@ -92,7 +92,7 @@
     <div class="toolbar">
       <button class="btn" id="go">Send to the forge</button>
       <button class="btn ghost" id="clear">Clear</button>
-      <span class="mut">No token. The page is copied to your clipboard and GitHub's own editor opens with the file name filled in; you paste and click Commit. The build then runs on Apple hardware in GitHub Actions, about 9–12 minutes.</span>
+      <span class="mut">No login, no token. The forge commits the page itself and the build runs on Apple hardware in GitHub Actions, about 9–12 minutes. You can leave: GitHub emails you the download link when it's done, and every build stays listed below. If the forge backend is ever down, the page falls back to opening GitHub's editor for you.</span>
     </div>
     <div class="handoff" id="handoff" style="display:none"></div>
   </section>
@@ -112,7 +112,7 @@
   <section class="panel install">
     <h2><span class="n">3</span> Installing on your Mac</h2>
     <ol>
-      <li>Download <b>Both in one .pkg</b> (or VST3-only for Cubase, AU-only for Logic).</li>
+      <li>Download <b>Both in one .pkg</b> (or VST3-only for Cubase, AU-only for Logic) — from the card here, from Builds below, or from the email GitHub sends you when the build lands (it's an issue in the repo assigned to you; your GitHub account email gets it).</li>
       <li>In Downloads, <b>right-click the .pkg → Open</b>, then <b>Open</b> on the warning. macOS 15: double-click, get refused, then System Settings → Privacy &amp; Security → <b>Open Anyway</b>, and open it again. Once per plugin.</li>
       <li>Continue, Install, password. The installer strips quarantine, re-signs the bundles on your Mac and resets the AU cache. No Terminal.</li>
       <li>Open Logic or Cubase. If Logic had a failed copy listed before, Plug-in Manager → Reset &amp; Rescan Selection once.</li>
@@ -133,7 +133,22 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const slugify = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 const REPO = 'robertcossey19/html2plugin', BRANCH = 'main';
 const RAW = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/`;
+const API = window.H2P_API || 'https://html2plugin.pplx.app'; // hosted forge backend (holds the repo deploy key); if it is down the page falls back to GitHub's editor
 const MAX_PREFILL_URL = 6000; // GitHub rejects very long URLs; above this the content travels on the clipboard
+
+/* ---------- forge backend ---------- */
+let backendOk = false;
+async function api(path, opts = {}) {
+  const r = await fetch(API + path, Object.assign({}, opts, { headers: Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {}) }));
+  const ct = r.headers.get('content-type') || ''; const body = ct.includes('json') ? await r.json() : await r.text();
+  if (!r.ok) throw new Error((body && body.error) || `${path} → ${r.status}`);
+  return body;
+}
+async function checkBackend() {
+  try { const h = await api('/api/health'); backendOk = Boolean(h.ok); setConn(backendOk, backendOk ? 'forge online · one-click builds' : 'forge backend degraded: ' + (h.error || 'not ready') + ' — using GitHub\'s editor instead'); }
+  catch (e) { backendOk = false; setConn(false, 'forge backend offline — using GitHub\'s editor instead'); }
+  return backendOk;
+}
 
 /* ---------- GitHub reads (public repo, no token) ---------- */
 let rateLimitedUntil = 0; const etags = new Map();
@@ -159,10 +174,7 @@ async function tagExists(tag) { // jsDelivr serves any git tag with CORS and no 
   try { const r = await fetch(`https://cdn.jsdelivr.net/gh/${REPO}@${encodeURIComponent(tag)}/README.md`, { method: 'HEAD', cache: 'no-store' }); return r.ok; } catch (e) { return false; }
 }
 function setConn(ok, msg) { $('connpill').className = 'pill ' + (ok ? 'ok' : 'bad'); $('connpill').textContent = msg; }
-(async () => {
-  try { const t = await rawText('.github/workflows/forge.yml'); if (!t) throw new Error('forge.yml missing'); setConn(true, 'forge reachable · ' + REPO); }
-  catch (e) { setConn(false, 'cannot reach the repo: ' + e.message); }
-})();
+checkBackend();
 loadHistory();
 
 /* ---------- paste pre-check ---------- */
@@ -207,7 +219,14 @@ $('go').onclick = async () => {
   if (!slug) return alert('Give the plugin a name (letters, digits, hyphens).');
   if (!html.trim() && !url) return alert('Paste the HTML or give a page URL.');
   const useUrl = !html.trim(); const rel = `inbox/${slug}.${useUrl ? 'url' : 'html'}`; let content = useUrl ? url + '\n' : html;
-  $('go').disabled = true; const box = $('handoff'); box.style.display = 'block'; box.innerHTML = '<span class="mut">checking the repo…</span>';
+  $('go').disabled = true; const box = $('handoff'); box.style.display = 'block'; box.innerHTML = '<span class="mut">checking the forge…</span>';
+  if (await checkBackend()) {
+    try {
+      const g = await api('/api/generate', { method: 'POST', body: JSON.stringify({ name: slug, html: useUrl ? '' : html, url: useUrl ? url : '' }) });
+      box.innerHTML = `<b class="hi">Committed ${esc(g.path)} @ ${esc(g.sha.slice(0, 7))}</b><div class="mut" style="margin-top:4px">The build is running on GitHub now. You can close this tab: when it finishes GitHub emails you (an issue assigned to you with the download links), and the build is listed under Builds whenever you come back.</div>`;
+      $('go').disabled = false; return watchBuild(slug, 0, 0, true, g.sha, new Set(g.baseTags || []));
+    } catch (e) { box.innerHTML = `<span class="warn">one-click path failed (${esc(e.message)}); falling back to GitHub's editor…</span>`; await sleep(1200); }
+  }
   try {
     // baseline before the commit: newest run number + the newest tag for this plugin, so the new build is recognised without knowing the commit sha
     let baseRun = 0, baseBuild = 0, apiOk = true;
@@ -237,7 +256,7 @@ $('go').onclick = async () => {
   $('go').disabled = false;
 };
 
-async function watchBuild(slug, baseRun, baseBuild, apiOk) {
+async function watchBuild(slug, baseRun, baseBuild, apiOk, sha, baseTags) {
   const gen = ++watchGen; const stale = () => gen !== watchGen;
   $('status').style.display = 'block'; $('log').textContent = ''; $('downloads').innerHTML = ''; $('runlink').innerHTML = `<a href="https://github.com/${REPO}/actions" target="_blank" rel="noopener">actions ↗</a>`;
   const state = { commit: 'ok', forge: 'run' }; renderSteps(state);
@@ -248,8 +267,8 @@ async function watchBuild(slug, baseRun, baseBuild, apiOk) {
     for (let i = 0; i < 16 && !run && !degraded; i++) {
       await sleep(i ? 15000 : 4000); if (stale()) return;
       try {
-        const rs = (await gh(`/repos/${REPO}/actions/runs?branch=${BRANCH}&event=push&per_page=5`)).workflow_runs || [];
-        const fresh = rs.filter(r => r.run_number > baseRun);
+        const rs = (await gh(sha ? `/repos/${REPO}/actions/runs?head_sha=${sha}&per_page=5` : `/repos/${REPO}/actions/runs?branch=${BRANCH}&event=push&per_page=5`)).workflow_runs || [];
+        const fresh = sha ? rs : rs.filter(r => r.run_number > baseRun);
         run = fresh.find(r => ((r.head_commit || {}).message || '').toLowerCase().includes(slug)) || fresh.find(r => ((r.head_commit || {}).message || '').includes('inbox/')) || fresh[0] || null;
         if (!run && i === 3) log('no new run yet — did the commit go through? (the editor tab shows the file in inbox/ when it did)', 'warn');
       } catch (e) { if (e.rateLimited) degrade(e); else log(e.message, 'bad'); }
@@ -287,8 +306,10 @@ async function watchBuild(slug, baseRun, baseBuild, apiOk) {
         } catch (e) { if (e.rateLimited) degrade(e); else { log(e.message, 'bad'); if (++strikes > 5) throw e; } }
       } else {
         // quota gone: probe the next few possible tags through jsDelivr; retry the API once its window resets
-        if (Date.now() >= rateLimitedUntil && rateLimitedUntil) { degraded = false; log('GitHub quota reset — live steps back'); if (!run) return watchBuild(slug, baseRun, baseBuild, true); continue; }
-        const start = Math.max(baseBuild, baseRun), hits = (await jsdTags()).filter(t => t.startsWith(slug + '-build-')).map(buildNo).filter(n => n > start);
+        if (Date.now() >= rateLimitedUntil && rateLimitedUntil) { degraded = false; log('GitHub quota reset — live steps back'); if (!run) return watchBuild(slug, baseRun, baseBuild, true, sha, baseTags); continue; }
+        const start = Math.max(baseBuild, baseRun); let hits = [];
+        if (baseTags && backendOk) { try { hits = (await api(`/api/tags?slug=${slug}`)).tags.filter(t => !baseTags.has(t)).map(buildNo); } catch (e) { } } // backend ls-remote: exact and quota-free
+        if (!hits.length) hits = (await jsdTags()).filter(t => t.startsWith(slug + '-build-')).map(buildNo).filter(n => n > start && !(baseTags && baseTags.has(`${slug}-build-${n}`)));
         if (!hits.length) for (let n = start + 1; n <= start + 8; n++) if (await tagExists(`${slug}-build-${n}`)) hits.push(n); // the list lags a few minutes; probe the next numbers directly
         if (hits.length) { done = true; const tag = `${slug}-build-${Math.max(...hits)}`; log(`release tag ${tag} appeared`); rel = (await findRelease(tag, 2)) || { tag_name: tag, html_url: `https://github.com/${REPO}/releases/tag/${tag}`, assets: [] }; for (const k of STEPS.map(x => x[0])) state[k] = 'ok'; }
         else if (lastMsg !== 'building') { lastMsg = 'building'; log(`building — checking for a new ${slug}-build-N tag every minute; the release page is https://github.com/${REPO}/releases`); }

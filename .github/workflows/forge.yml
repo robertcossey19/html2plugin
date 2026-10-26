@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   forge:
@@ -34,7 +35,13 @@ jobs:
         name: Pick inbox files
         run: |
           for u in inbox/*.url; do [ -f "$u" ] && node forge/fetch-source.js "$u"; done || true
-          if [ -n "${{ github.event.inputs.slug }}" ]; then FILES="inbox/${{ github.event.inputs.slug }}.html"; else FILES=$(ls inbox/*.html 2>/dev/null || true); fi
+          ALL=$(ls inbox/*.html 2>/dev/null || true)
+          if [ -n "${{ github.event.inputs.slug }}" ]; then FILES="inbox/${{ github.event.inputs.slug }}.html"
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ] && git fetch -q --no-tags --depth=1 origin "${{ github.event.before }}" 2>/dev/null; then
+            CHANGED=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" || true)
+            if echo "$CHANGED" | grep -qvE '^inbox/'; then FILES="$ALL"; echo "engine/workflow changed -> building every inbox page"
+            else FILES=$(echo "$CHANGED" | grep -E '^inbox/.*\.(html|url)$' | sed 's/\.url$/.html/' | sort -u | while read f; do [ -f "$f" ] && echo "$f"; done); echo "only the pushed inbox pages: $FILES"; fi
+          else FILES="$ALL"; fi
           SLUGS=$(for f in $FILES; do basename "$f" .html; done | jq -R . | jq -sc .)
           echo "slugs=$SLUGS" >> $GITHUB_OUTPUT; echo "building: $SLUGS"
       - name: Forge every inbox page
@@ -266,3 +273,32 @@ jobs:
           gh release create "$TAG" plugins/${{ matrix.slug }}/build/${TARGET}_artefacts/Release/out/* --repo "${{ github.repository }}" \
             --title "$NAME — macOS VST3 + AU (build ${{ github.run_number }})" \
             --notes "$(printf 'Universal (Apple Silicon + Intel). Double-click **%s-Installer-VST3+AU.pkg** then rescan plugins in Logic / Cubase.\n\nTests on this build: installer, auval, pluginval strictness 10 (VST3 + AU), HostTest incl. golden master vs Node/V8, editor open with audio.\n\n%s\n\nCPU (HostTest, 48 kHz / 512): %s\nCPU with JIT disabled: %s\n\nSigning: %s' "$SAFE" "$BOUND" "$CPU" "$CPU2" "${SIGNING_NOTE:-ad-hoc}")"
+
+      - name: Notify (GitHub issue assigned to the owner → email; optional Resend email)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.id.outputs.name }}
+          OUTCOME: ${{ job.status }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+        run: |
+          TAG="${{ matrix.slug }}-build-${{ github.run_number }}"
+          REL="https://github.com/${{ github.repository }}/releases/tag/$TAG"
+          RUN="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          OWNER="${{ github.repository_owner }}"
+          if [ "$OUTCOME" = "success" ]; then
+            TITLE="Ready: $NAME (build ${{ github.run_number }})"
+            BODY=$(printf 'Your plugin passed every gate and the installers are published.\n\n**Download:** %s\n\n- `%s-Installer-VST3+AU.pkg` — both (Cubase + Logic)\n- `%s-VST3-Installer.pkg` — Cubase only\n- `%s-AU-Installer.pkg` — Logic only\n\nInstall: right-click the .pkg → Open (macOS 15: System Settings → Privacy & Security → Open Anyway), then Continue / Install. The installer strips quarantine and re-signs on your Mac; no Terminal.\n\nSigning on this build: %s\n\nRun log: %s\n\n_This issue is the notification. Close it whenever._' "$REL" "$SAFE" "$SAFE" "$SAFE" "${SIGNING_NOTE:-ad-hoc}" "$RUN")
+          else
+            TITLE="Failed: $NAME (build ${{ github.run_number }})"
+            BODY=$(printf 'The build did not pass. Open the run and download the `%s-test-logs` artifact for auval / pluginval / HostTest output.\n\nRun: %s' "${{ matrix.slug }}" "$RUN")
+          fi
+          gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY" --assignee "$OWNER" --label "build" 2>/dev/null \
+            || gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY" --assignee "$OWNER" || echo "issue creation failed (non-fatal)"
+          if [ -n "$RESEND_API_KEY" ] && [ -n "$NOTIFY_EMAIL" ]; then
+            HTML=$(printf '%s' "$BODY" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' | awk '{printf "%s<br>", $0}')
+            curl -sS -X POST https://api.resend.com/emails -H "Authorization: Bearer $RESEND_API_KEY" -H "Content-Type: application/json" \
+              -d "$(jq -n --arg to "$NOTIFY_EMAIL" --arg subj "$TITLE" --arg html "$HTML" '{from:"html2plugin <onboarding@resend.dev>", to:[$to], subject:$subj, html:$html}')" \
+              && echo "email sent to $NOTIFY_EMAIL" || echo "email send failed (non-fatal)"
+          fi
