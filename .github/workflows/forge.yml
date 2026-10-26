@@ -245,6 +245,8 @@ jobs:
           grep -E "render cost|FAIL|\[h2p" "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt" || true
           cp ~/Library/Logs/html2plugin/*.log "$GITHUB_WORKSPACE/testlogs/" 2>/dev/null || true
           grep "render cost" "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt" "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt"
+          echo "--- JavaScriptCore JIT status inside the host process (default run / JSC_useJIT=false run) ---"
+          grep -h "JavaScriptCore:" "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt" "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt" | head -4 || echo "(no JIT probe line found)"
       - name: Which hosts allow in-process JIT? (informational)
         run: |
           for app in "/Applications/Logic Pro.app" "/Applications/GarageBand.app" "/Applications/Cubase 14.app" "/Applications/Cubase 13.app"; do
@@ -269,10 +271,11 @@ jobs:
         run: |
           TAG="${{ matrix.slug }}-build-${{ github.run_number }}"
           CPU=$(grep -h "render cost" testlogs/hosttest-vst3.txt | head -1 | sed 's/^ *//'); CPU2=$(grep -h "render cost" testlogs/hosttest-nojit.txt | head -1 | sed 's/^ *//')
+          JIT=$(grep -h "JavaScriptCore:" testlogs/hosttest-vst3.txt | head -1 | sed 's/.*JavaScriptCore: //')
           BOUND=$(grep -m1 "two-way UI binding" plugins/${{ matrix.slug }}/REPORT.md || true)
           gh release create "$TAG" plugins/${{ matrix.slug }}/build/${TARGET}_artefacts/Release/out/* --repo "${{ github.repository }}" \
             --title "$NAME — macOS VST3 + AU (build ${{ github.run_number }})" \
-            --notes "$(printf 'Universal (Apple Silicon + Intel). Double-click **%s-Installer-VST3+AU.pkg** then rescan plugins in Logic / Cubase.\n\nTests on this build: installer, auval, pluginval strictness 10 (VST3 + AU), HostTest incl. golden master vs Node/V8, editor open with audio.\n\n%s\n\nCPU (HostTest, 48 kHz / 512): %s\nCPU with JIT disabled: %s\n\nSigning: %s' "$SAFE" "$BOUND" "$CPU" "$CPU2" "${SIGNING_NOTE:-ad-hoc}")"
+            --notes "$(printf 'Universal (Apple Silicon + Intel). Double-click **%s-Installer-VST3+AU.pkg** then rescan plugins in Logic / Cubase.\n\nTests on this build: installer, auval, pluginval strictness 10 (VST3 + AU), HostTest incl. golden master vs Node/V8, editor open with audio.\n\n%s\n\nCPU (HostTest, 48 kHz / 512): %s\nCPU with JIT disabled: %s\nJavaScriptCore in the test host: %s\n\nSigning: %s' "$SAFE" "$BOUND" "$CPU" "$CPU2" "${JIT:-unknown}" "${SIGNING_NOTE:-ad-hoc}")"
 
       - name: Notify (GitHub issue assigned to the owner → email; optional Resend email)
         if: always()

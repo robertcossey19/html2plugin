@@ -4,6 +4,7 @@
 //  * CPU: render cost as % of realtime (run twice in CI: default and JSC_useJIT=false)
 //  * --editor: opens the WebView UI with audio running and checks the page booted its graph (ops reached the engine)
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <cstring>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "BinaryData.h"
@@ -89,7 +90,11 @@ int main (int argc, char** argv)
       const double coldCost = 100.0 * h.lastRenderSeconds / 1.0;
       h.run (1000, -20, 2.0);                       // JIT warm-up (baseline -> DFG -> FTL tiers)
       h.run (1000, -20, 3.0);
-      printf ("     render cost: %.1f %% of realtime warm (%.1f %% cold, first second incl. JIT compile) (JavaScriptCore in this process%s)\n", 100.0 * h.lastRenderSeconds / 3.0, coldCost, getenv ("JSC_useJIT") ? ", JSC_useJIT env set" : ""); }
+      const double warmCost = 100.0 * h.lastRenderSeconds / 3.0;
+      const char* jitEnv = getenv ("JSC_useJIT"); const bool jitForcedOff = jitEnv != nullptr && (strcmp (jitEnv, "false") == 0 || strcmp (jitEnv, "0") == 0);
+      printf ("     render cost: %.1f %% of realtime warm (%.1f %% cold, first second incl. JIT compile) (JavaScriptCore in this process%s)\n", warmCost, coldCost, jitEnv ? ", JSC_useJIT env set" : "");
+      if (! jitForcedOff) CHECK (warmCost < 100.0, "keeps up with realtime (%.1f %% of one core at 48 kHz / 512; must stay under 100 %%)", warmCost);
+      else printf ("     (JIT forced off by JSC_useJIT: cost is informational — the worst case for hosts that forbid in-process JIT)\n"); }
 
     printf ("== Golden master vs Node/V8 ==\n");
     if (goldenPath.isNotEmpty())
@@ -126,9 +131,22 @@ int main (int argc, char** argv)
     printf ("== State save/restore ==\n");
     if (h.plug->getParameters().size() > 0)
     {
-        auto* p = userParams.empty() ? h.plug->getParameters()[0] : userParams[0]; float keep = p->getValue(); p->setValueNotifyingHost (0.731f); const float stored = p->getValue(); juce::MemoryBlock mb; h.plug->getStateInformation (mb);
+        // continuous parameter: an arbitrary value must come back exactly; discrete/boolean parameters snap, so they are tested with a legal end value
+        juce::AudioProcessorParameter* p = nullptr;
+        for (auto* q : userParams) if (! q->isDiscrete() && ! q->isBoolean()) { p = q; break; }
+        const bool continuous = p != nullptr;
+        if (p == nullptr) p = userParams.empty() ? h.plug->getParameters()[0] : userParams[0];
+        const float probe = continuous ? 0.731f : 1.0f;
+        float keep = p->getValue(); p->setValueNotifyingHost (probe); const float stored = p->getValue(); juce::MemoryBlock mb; h.plug->getStateInformation (mb);
         p->setValueNotifyingHost (0.0f); h.plug->setStateInformation (mb.getData(), (int) mb.getSize());
-        CHECK (std::abs (p->getValue() - stored) < 0.02f, "preset recall restores %s (%.3f -> %.3f)", p->getName (32).toRawUTF8(), stored, p->getValue()); p->setValueNotifyingHost (keep);
+        CHECK (std::abs (p->getValue() - stored) < 0.02f, "preset recall restores %s %s (%.3f -> %.3f)", continuous ? "continuous" : "discrete", p->getName (32).toRawUTF8(), stored, p->getValue()); p->setValueNotifyingHost (keep);
+        // and every discrete/boolean parameter survives a round trip at both ends
+        for (auto* q : userParams) if (q->isDiscrete() || q->isBoolean())
+        {
+            float k = q->getValue(); bool ok = true;
+            for (float v : { 1.0f, 0.0f }) { q->setValueNotifyingHost (v); const float st = q->getValue(); juce::MemoryBlock m2; h.plug->getStateInformation (m2); q->setValueNotifyingHost (1.0f - v); h.plug->setStateInformation (m2.getData(), (int) m2.getSize()); ok = ok && std::abs (q->getValue() - st) < 0.02f; }
+            CHECK (ok, "preset recall restores discrete %s at both ends", q->getName (32).toRawUTF8()); q->setValueNotifyingHost (k);
+        }
     }
 
     printf ("== Odd block size: 480 frames -> latency reported ==\n");

@@ -26,6 +26,8 @@ public:
     std::vector<std::string> takeNativeErrors() { std::vector<std::string> v; v.swap (nativeErrors); return v; } // exceptions thrown out of apply/render/hostParam
 
     bool isReady() const { return ready; }
+    double jitProbeMs = -1;          // ms for a 2e6-iteration float loop measured inside this context right after init (FTL JIT: a few ms; LLInt interpreter: 100+ ms)
+    bool jitLikelyOn() const { return jitProbeMs >= 0 && jitProbeMs < 30.0; }
     double currentSampleRate = 0;
     int maxBlock = 0;
 

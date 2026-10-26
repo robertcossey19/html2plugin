@@ -17,7 +17,12 @@ var H2P = (function () {
     drain: function (withAn) { return ctx.drainOutboxJSON(!!withAn); },
     hostParam: function (name, v) { return ctx.hostParam(name, v) ? 1 : 0; },
     errors: function () { var e = ctx ? ctx.errors.splice(0) : []; return JSON.stringify(e); },
-    describe: function () { return ctx ? ctx.describeJSON() : '{}'; }
+    describe: function () { return ctx ? ctx.describeJSON() : '{}'; },
+    jitProbe: function () {   // same loop twice so tier-up has happened; report the second run
+      var best = 1e9;
+      for (var r = 0; r < 2; r++) { var t0 = Date.now(); var x = 0.1; for (var i = 0; i < 2000000; i++) { x = x * 0.9999999 + 0.000001; } var t = Date.now() - t0; if (x !== x) t = 1e9; if (t < best) best = t; }
+      return best;
+    }
   };
 })();
 )JS";
@@ -138,6 +143,12 @@ bool JSHost::init (double sampleRate, int maxBlockSize, const std::string& engin
     taInL = makeFloat32Array (bInL); taInR = makeFloat32Array (bInR); taOutL = makeFloat32Array (bOutL); taOutR = makeFloat32Array (bOutR);
     if (! taInL || ! taInR || ! taOutL || ! taOutR) { err = "typed array creation failed"; return false; }
     ready = true;
+    if (JSObjectRef fnProbe = getFunction (api, "jitProbe"))
+    {
+        JSValueRef exc = nullptr; JSValueRef r = JSObjectCallAsFunction (ctx, fnProbe, api, 0, nullptr, &exc);
+        if (exc == nullptr && r != nullptr) jitProbeMs = JSValueToNumber (ctx, r, nullptr);
+        JSValueUnprotect (ctx, fnProbe);
+    }
     return true;
 }
 

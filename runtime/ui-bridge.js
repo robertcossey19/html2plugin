@@ -23,9 +23,18 @@
   }
   H.onPost = data => flatten(data, current);
 
+  // Synthetic pointer events (pointerId 7) are not "active pointers" to WebKit, so a page's hit.setPointerCapture(e.pointerId) throws
+  // NotFoundError and aborts its own pointerdown handler before it arms the drag. Make capture calls for our pointer id no-ops.
+  const SYN_ID = 7;
+  let applying = false;
+  if (typeof Element !== 'undefined' && Element.prototype.setPointerCapture) {
+    const spc = Element.prototype.setPointerCapture, rpc = Element.prototype.releasePointerCapture, hpc = Element.prototype.hasPointerCapture;
+    Element.prototype.setPointerCapture = function (id) { if (id === SYN_ID || applying) { try { return spc.call(this, id); } catch (e) { return; } } return spc.call(this, id); };
+    Element.prototype.releasePointerCapture = function (id) { if (id === SYN_ID || applying) { try { return rpc.call(this, id); } catch (e) { return; } } return rpc.call(this, id); };
+    if (hpc) Element.prototype.hasPointerCapture = function (id) { if (id === SYN_ID) return true; return hpc.call(this, id); };
+  }
   const fire = (el, type, init) => { const Ev = type.startsWith('pointer') ? (window.PointerEvent || MouseEvent) : type === 'wheel' ? WheelEvent : type.startsWith('mouse') ? MouseEvent : Event; el.dispatchEvent(new Ev(type, Object.assign({ bubbles: true, cancelable: true, composed: true, view: window }, init || {}))); };
   const nearest = (opts, v, key) => opts.reduce((best, o) => (best == null || Math.abs(o[key] - v) < Math.abs(best[key] - v)) ? o : best, null);
-  let applying = false;
   function setFromHost(name, value) {
     const b = bindings[name]; if (!b) return false; const el = document.querySelector(b.selector); if (!el) return false;
     applying = true;
@@ -42,7 +51,7 @@
         case 'drag': {
           const cur = current[name]; if (typeof cur !== 'number' || !b.unitsPerPixelUp) return false;
           const r = el.getBoundingClientRect(); const x = r.left + r.width / 2, y0 = r.top + r.height / 2; const dy = (value - cur) / b.unitsPerPixelUp;
-          const common = { pointerId: 7, pointerType: 'mouse', isPrimary: true, clientX: x, screenX: x };
+          const common = { pointerId: SYN_ID, pointerType: 'mouse', isPrimary: true, clientX: x, screenX: x };
           fire(el, 'pointerdown', Object.assign({ clientY: y0, screenY: y0, button: 0, buttons: 1 }, common));
           for (const f of [0.5, 1, 1]) fire(el, 'pointermove', Object.assign({ clientY: y0 - dy * f, screenY: y0 - dy * f, buttons: 1 }, common)); // several moves: some pages apply linked/partner state one event late
           fire(el, 'pointerup', Object.assign({ clientY: y0 - dy, screenY: y0 - dy, button: 0, buttons: 0 }, common));
