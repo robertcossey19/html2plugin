@@ -73,8 +73,28 @@ target_link_libraries(${H2P_TARGET} PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags
     juce::juce_recommended_warning_flags)
+# JavaScript engine for the DSP. Apple's system JavaScriptCore only JIT-compiles inside processes that carry the
+# com.apple.security.cs.allow-jit entitlement (WebKit: isJITEnabled() under MAC_JIT_RESTRICTIONS). Plugin hosts do not
+# carry it (Logic's AUHostingService XPC, Cubase, ...), so the system framework runs the worklet in its interpreter —
+# 5-20x slower. A statically linked open-source JSC (bun-webkit prebuilt) has no such check: it JITs wherever MAP_JIT
+# memory is available (allow-unsigned-executable-memory, which plugin hosts do carry), and JSHost falls back to the
+# interpreter when it is not.
+set(H2P_JSC_DIR "" CACHE PATH "prebuilt static JavaScriptCore dir (lib/libJavaScriptCore.a, libWTF.a, libbmalloc.a + include/); empty = system framework")
 if(APPLE)
-    target_link_libraries(${H2P_TARGET} PRIVATE "-framework JavaScriptCore")
+    if(H2P_JSC_DIR AND EXISTS "${H2P_JSC_DIR}/lib/libJavaScriptCore.a")
+        message(STATUS "html2plugin: static JavaScriptCore from ${H2P_JSC_DIR} (JIT independent of the host's allow-jit entitlement)")
+        target_include_directories(${H2P_TARGET} BEFORE PRIVATE "${H2P_JSC_DIR}/include")
+        target_compile_definitions(${H2P_TARGET} PRIVATE H2P_STATIC_JSC=1 JSC_OBJC_API_ENABLED=0)
+        target_sources(${H2P_TARGET} PRIVATE Source/JSCEmbedderStubs.cpp)
+        target_link_libraries(${H2P_TARGET} PRIVATE
+            "${H2P_JSC_DIR}/lib/libJavaScriptCore.a" "${H2P_JSC_DIR}/lib/libWTF.a" "${H2P_JSC_DIR}/lib/libbmalloc.a"
+            icucore "-framework Foundation" "-framework CoreFoundation" "-framework Security")
+        # keep the bundled engine private: the host process also maps Apple's JavaScriptCore.framework (through WebKit)
+        target_link_options(${H2P_TARGET} INTERFACE "LINKER:-unexported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/Source/jsc-unexported.txt")
+    else()
+        message(STATUS "html2plugin: system JavaScriptCore.framework (interpreter-only in hosts without allow-jit)")
+        target_link_libraries(${H2P_TARGET} PRIVATE "-framework JavaScriptCore")
+    endif()
 endif()
 
 # ---- HostTest: loads the built VST3 in a real JUCE host, checks parameters/state/levels and the golden master ----

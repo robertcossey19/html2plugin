@@ -137,7 +137,7 @@ void H2PProcessor::rebuildEngine (double sr, int block)
     applyAllHostParams();
     flushEngineErrors ("boot");
     log ("engine ready: " + juce::String (sr, 0) + " Hz, block " + juce::String (block) + ", bootOps " + juce::String ((int) bootOpsJson.size()) + " B");
-    log ("JavaScriptCore: 2e6-iteration float loop " + juce::String (js->jitProbeMs, 1) + " ms -> " + (js->jitLikelyOn() ? "JIT ON (compiled DSP)" : "JIT OFF (interpreter; this host process lacks the com.apple.security.cs.allow-jit entitlement or JSC_useJIT=false) — heavy worklets will not keep up"));
+    log ("JavaScriptCore: " + juce::String (js->engineInfo) + "; 2e6-iteration float loop " + juce::String (js->jitProbeMs, 1) + " ms -> " + (js->jitLikelyOn() ? "JIT ON (compiled DSP)" : "JIT OFF (interpreter) — heavy worklets will not keep up"));
     preparedRate = sr; preparedBlock = block;
     generation++;
 }

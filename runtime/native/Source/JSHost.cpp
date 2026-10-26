@@ -1,5 +1,38 @@
 #include "JSHost.h"
 #include <cstring>
+#include <cstdlib>
+#include <algorithm>
+#if H2P_STATIC_JSC
+ #include <dlfcn.h>
+ #include <sys/mman.h>
+#endif
+
+#if H2P_STATIC_JSC
+// The engine is linked into this plugin binary. Two things follow:
+//  * the image must never be unloaded (JSC keeps compiler/GC threads alive), so pin it the first time we run;
+//  * JSC asserts if it cannot get MAP_JIT memory. Probe first; without it run the interpreter instead of crashing the host.
+static bool setJit = false, setWasm = false;
+static void forgetStaticJSCEnv() { if (setJit) unsetenv ("JSC_useJIT"); if (setWasm) unsetenv ("JSC_useWasm"); setJit = setWasm = false; }
+static const char* prepareStaticJSC()
+{
+    static const char* verdict = nullptr;
+    if (verdict != nullptr) return verdict;
+    Dl_info info {};
+    if (dladdr ((void*) &prepareStaticJSC, &info) && info.dli_fname != nullptr)
+        dlopen (info.dli_fname, RTLD_NOW | RTLD_NODELETE);          // handle intentionally kept: image stays mapped for the life of the process
+    const size_t sz = 16384;
+    void* p = mmap (nullptr, sz, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+    const bool jitMem = p != MAP_FAILED;
+    if (jitMem) munmap (p, sz);
+    // JSC_* variables are read once, by the bundled engine's first VM init (inside JSGlobalContextCreate below); they are
+    // removed again right after so the host's own copy of Apple's JavaScriptCore never sees them.
+    if (! jitMem && getenv ("JSC_useJIT") == nullptr) { setenv ("JSC_useJIT", "false", 1); setJit = true; }
+    if (getenv ("JSC_useWasm") == nullptr) { setenv ("JSC_useWasm", "false", 1); setWasm = true; }   // no Wasm fast-memory signal handlers inside somebody else's process
+    verdict = jitMem ? "bundled JavaScriptCore (static), MAP_JIT memory available in this host"
+                     : "bundled JavaScriptCore (static), host forbids MAP_JIT memory -> interpreter";
+    return verdict;
+}
+#endif
 
 // Glue evaluated after the engine. Everything the native side needs is reachable through the H2P object.
 static const char* kGlue = R"JS(
@@ -109,7 +142,15 @@ bool JSHost::init (double sampleRate, int maxBlockSize, const std::string& engin
 {
     release();
     currentSampleRate = sampleRate; maxBlock = std::max (maxBlockSize, 128);
+   #if H2P_STATIC_JSC
+    engineInfo = prepareStaticJSC();
+   #else
+    engineInfo = "Apple JavaScriptCore.framework (JIT only when the host process carries com.apple.security.cs.allow-jit)";
+   #endif
     ctx = JSGlobalContextCreate (nullptr);
+   #if H2P_STATIC_JSC
+    forgetStaticJSCEnv();
+   #endif
     if (ctx == nullptr) { err = "JSGlobalContextCreate failed"; return false; }
     global = JSContextGetGlobalObject (ctx);
 

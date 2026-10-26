@@ -3,7 +3,7 @@
 #pragma once
 #include <string>
 #include <vector>
-#include <JavaScriptCore/JavaScriptCore.h>
+#include <JavaScriptCore/JavaScript.h>   // C API only: present in Apple's framework and in the statically linked open-source build
 
 class JSHost
 {
@@ -26,8 +26,9 @@ public:
     std::vector<std::string> takeNativeErrors() { std::vector<std::string> v; v.swap (nativeErrors); return v; } // exceptions thrown out of apply/render/hostParam
 
     bool isReady() const { return ready; }
+    std::string engineInfo;          // which JavaScriptCore this is and whether JIT memory was obtainable in this host process
     double jitProbeMs = -1;          // ms for a 2e6-iteration float loop measured inside this context right after init (FTL JIT: a few ms; LLInt interpreter: 100+ ms)
-    bool jitLikelyOn() const { return jitProbeMs >= 0 && jitProbeMs < 30.0; }
+    bool jitLikelyOn() const { return jitProbeMs >= 0 && jitProbeMs < 15.0; }   // M1: FTL ~2-5 ms, baseline ~10 ms, LLInt interpreter ~30 ms
     double currentSampleRate = 0;
     int maxBlock = 0;
 

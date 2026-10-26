@@ -126,10 +126,27 @@ jobs:
           TARGET=$(echo "${{ matrix.slug }}" | sed 's/[^A-Za-z0-9_]/_/g')
           echo "name=$NAME" >> $GITHUB_OUTPUT; echo "manu=$MANU" >> $GITHUB_OUTPUT; echo "code=$CODE" >> $GITHUB_OUTPUT; echo "bid=$BID" >> $GITHUB_OUTPUT; echo "ver=$VER" >> $GITHUB_OUTPUT; echo "target=$TARGET" >> $GITHUB_OUTPUT
           echo "$NAME ($MANU/$CODE) target=$TARGET"; cat REPORT.md
+      - name: JavaScriptCore with a working JIT (static open-source build, universal)
+        # Apple's JavaScriptCore.framework only JITs in processes that carry com.apple.security.cs.allow-jit; plugin hosts
+        # (Logic's AUHostingService, Cubase, ...) do not, so the worklet would run interpreted, 5-20x slower. Bun's prebuilt
+        # JSC has no entitlement check and JITs wherever MAP_JIT memory exists (allow-unsigned-executable-memory, which hosts carry).
+        env: { JSC_TAG: autobuild-0b6b831aef91a68bdc68a2941b1886ac73909310 }
+        run: |
+          set -e
+          D="$RUNNER_TEMP/jsc"; mkdir -p "$D/u/lib"; cd "$D"
+          for a in arm64 amd64; do
+            curl -sSfL --retry 3 -o $a.tgz "https://github.com/oven-sh/WebKit/releases/download/$JSC_TAG/bun-webkit-macos-$a.tar.gz"
+            mkdir -p $a && tar xzf $a.tgz -C $a && rm $a.tgz
+          done
+          cp -R arm64/bun-webkit/include u/include
+          for l in libJavaScriptCore.a libWTF.a libbmalloc.a; do lipo -create arm64/bun-webkit/lib/$l amd64/bun-webkit/lib/$l -output u/lib/$l; done
+          lipo -info u/lib/libJavaScriptCore.a; du -sh u/lib
+          echo "H2P_JSC_DIR=$D/u" >> $GITHUB_ENV
       - name: Configure + build (universal, Release)
         run: |
           cd plugins/${{ matrix.slug }}
           cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+                -DH2P_JSC_DIR="${H2P_JSC_DIR:-}" \
                 -DPLUGIN_CODESIGN_IDENTITY="${PLUGIN_CODESIGN_IDENTITY:--}" -DPLUGIN_DEVELOPMENT_TEAM="${PLUGIN_DEVELOPMENT_TEAM:-}"
           # juce_vst3_helper (moduleinfo.json generator) occasionally aborts on the hosted runner; a second, incremental build retries just that step
           cmake --build build --config Release --parallel || cmake --build build --config Release --parallel
@@ -247,6 +264,29 @@ jobs:
           grep "render cost" "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt" "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt"
           echo "--- JavaScriptCore JIT status inside the host process (default run / JSC_useJIT=false run) ---"
           grep -h "JavaScriptCore:" "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt" "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt" | head -4 || echo "(no JIT probe line found)"
+      - name: Crash reports (only when a test step died)
+        if: failure()
+        run: |
+          sleep 8
+          ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head -5 || true
+          for f in $(ls -t ~/Library/Logs/DiagnosticReports/*HostTest*.ips ~/Library/Logs/DiagnosticReports/*auval*.ips ~/Library/Logs/DiagnosticReports/*pluginval*.ips 2>/dev/null | head -2); do
+            echo "=== $f"; cp "$f" testlogs/ || true
+            python3 - "$f" <<'PY'
+          import json,sys
+          raw=open(sys.argv[1],errors='replace').read().split('\n',1)
+          hdr=json.loads(raw[0]); body=json.loads(raw[1])
+          print(hdr.get('name'), body.get('exception',{}), body.get('termination',{}))
+          print('asi:', body.get('asi'))
+          imgs=body.get('usedImages',[])
+          faulting=body.get('faultingThread',0)
+          for t in body.get('threads',[]):
+              if t.get('id')!=body['threads'][faulting].get('id') and not t.get('triggered'): continue
+              print('--- faulting thread', t.get('name') or t.get('queue'))
+              for fr in t.get('frames',[])[:40]:
+                  img=imgs[fr.get('imageIndex',0)] if fr.get('imageIndex',0)<len(imgs) else {}
+                  print('  ', img.get('name'), fr.get('symbol'), '+', fr.get('symbolLocation'), fr.get('sourceFile',''), fr.get('sourceLine',''))
+          PY
+          done
       - name: Which hosts allow in-process JIT? (informational)
         run: |
           for app in "/Applications/Logic Pro.app" "/Applications/GarageBand.app" "/Applications/Cubase 14.app" "/Applications/Cubase 13.app"; do

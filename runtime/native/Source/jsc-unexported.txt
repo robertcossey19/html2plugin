@@ -1,0 +1,22 @@
+# symbols of the statically linked JavaScriptCore/WTF/bmalloc that must not leak out of the plugin binary
+_JS*
+__ZN3JSC*
+__ZNK3JSC*
+__ZTVN3JSC*
+__ZTIN3JSC*
+__ZTSN3JSC*
+__ZN3WTF*
+__ZNK3WTF*
+__ZTVN3WTF*
+__ZTIN3WTF*
+__ZTSN3WTF*
+__ZN7bmalloc*
+__ZNK7bmalloc*
+_WTF*
+_bmalloc*
+_pas_*
+_jsc_*
+_g_jscConfig*
+_g_wtfConfig*
+_g_config*
+_mbmalloc*
