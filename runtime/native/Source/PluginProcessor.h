@@ -60,6 +60,7 @@ public:
     juce::AudioProcessorValueTreeState& state() { return apvts; }
 
     static juce::String assetString (const char* name);                  // BinaryData lookup by original filename
+    static void log (const juce::String& line);                          // stderr + ~/Library/Logs/html2plugin/<target>.log (Release builds included)
 
 private:
     juce::var manifest;
@@ -90,6 +91,7 @@ private:
     void setFromEngineering (int i, double v);                            // page -> host
     void rebuildEngine (double sr, int block);
     void applyAllHostParams();
+    void flushEngineErrors (const char* stage);                           // message/prepare thread only
     void timerCallback() override;                                        // message thread: outbox dispatch
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (H2PProcessor)
 };

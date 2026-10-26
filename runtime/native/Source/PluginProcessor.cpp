@@ -1,6 +1,24 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "BinaryData.h"
+#include <iostream>
+
+void H2PProcessor::log (const juce::String& line)
+{
+    std::cerr << "[h2p " << H2P_TARGET_NAME << "] " << line << std::endl;
+    static juce::File logFile = juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("Library/Logs/html2plugin").getChildFile (juce::String (H2P_TARGET_NAME) + ".log");
+    static bool once = false;
+    if (! once) { once = true; logFile.getParentDirectory().createDirectory(); if (logFile.getSize() > 512 * 1024) logFile.deleteFile(); }
+    logFile.appendText (juce::Time::getCurrentTime().toISO8601 (true) + " " + line + "\n");
+}
+
+void H2PProcessor::flushEngineErrors (const char* stage)
+{
+    if (! js) return;
+    for (auto& e : js->takeNativeErrors()) { lastEngineError = e; log (juce::String (stage) + " exception: " + e); }
+    juce::var errs = juce::JSON::parse (juce::String (js->takeErrors()));
+    if (auto* a = errs.getArray()) for (auto& e : *a) { lastEngineError = e.toString(); log (juce::String (stage) + " engine error: " + e.toString()); }
+}
 
 juce::String H2PProcessor::assetString (const char* name)
 {
@@ -95,9 +113,17 @@ void H2PProcessor::rebuildEngine (double sr, int block)
 {
     js.reset (new JSHost());
     std::string err;
-    if (! js->init (sr, block, engineJs, workletsJs, hostNamesJson, err)) { lastEngineError = err; DBG ("html2plugin engine init failed: " << err); js.reset(); return; }
+    if (! js->init (sr, block, engineJs, workletsJs, hostNamesJson, err))
+    {
+        lastEngineError = err; js.reset();
+        log ("ENGINE INIT FAILED (plugin runs as pass-through): " + juce::String (err));
+        log ("sizes: engine.js " + juce::String ((int) engineJs.size()) + " B, worklets.js " + juce::String ((int) workletsJs.size()) + " B, bootOps " + juce::String ((int) bootOpsJson.size()) + " B, hostNames " + juce::String (hostNamesJson));
+        return;
+    }
     js->applyOpsJSON (bootOpsJson);                 // the page's boot-time graph + default message, captured by the forge
     applyAllHostParams();
+    flushEngineErrors ("boot");
+    log ("engine ready: " + juce::String (sr, 0) + " Hz, block " + juce::String (block) + ", bootOps " + juce::String ((int) bootOpsJson.size()) + " B");
     preparedRate = sr; preparedBlock = block;
     generation++;
 }
@@ -202,7 +228,7 @@ void H2PProcessor::timerCallback()
             for (auto& m : *msgs)
             {
                 const int id = (int) m["id"];
-                if (id == -1) { lastEngineError = m["data"]["message"].toString(); DBG ("html2plugin engine: " << lastEngineError); }
+                if (id == -1) { lastEngineError = m["data"]["message"].toString(); log ("engine error: " + lastEngineError); }
                 else if (id == -2 && ! pageLoading.load())
                 {   // UI moved a control: reflect it in the host (unless the host itself set this param within the last 300 ms)
                     if (auto* vals = m["data"]["values"].getDynamicObject())
@@ -217,6 +243,7 @@ void H2PProcessor::timerCallback()
             }
         if (onOutbox) onOutbox (s);
     }
+    if (js && ! work.empty()) for (auto& e : js->takeNativeErrors()) { lastEngineError = e; log ("audio-thread exception: " + e); }
 }
 
 void H2PProcessor::getStateInformation (juce::MemoryBlock& destData)

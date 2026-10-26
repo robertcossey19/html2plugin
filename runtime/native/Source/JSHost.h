@@ -22,6 +22,7 @@ public:
     std::string drainOutboxJSON (bool withAnalysers);               // {time, msgs:[{id,data}], analysers?}
     int hostParam (const std::string& name, double value);          // 0 = no such param, 1 = applied
     std::string takeErrors();                                       // JSON array of engine error strings (empties the list)
+    std::vector<std::string> takeNativeErrors() { std::vector<std::string> v; v.swap (nativeErrors); return v; } // exceptions thrown out of apply/render/hostParam
 
     bool isReady() const { return ready; }
     double currentSampleRate = 0;
@@ -34,6 +35,8 @@ private:
     JSObjectRef taInL = nullptr, taInR = nullptr, taOutL = nullptr, taOutR = nullptr;
     std::vector<float> bInL, bInR, bOutL, bOutR;
     bool ready = false;
+    std::vector<std::string> nativeErrors;
+    void noteException (const char* where, JSValueRef exc) { if (nativeErrors.size() < 32) nativeErrors.push_back (std::string (where) + ": " + exceptionText (exc)); }
 
     bool evaluate (const std::string& code, const char* name, std::string& err);
     JSObjectRef getFunction (JSObjectRef obj, const char* name);

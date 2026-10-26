@@ -156,6 +156,7 @@ void JSHost::render (const float* inL, const float* inR, float* outL, float* out
     JSObjectCallAsFunction (ctx, fnRender, api, 6, args, &exc);
     if (exc != nullptr)
     {   // never leave garbage on the bus
+        noteException ("render", exc);
         std::memcpy (outL, inL, sizeof (float) * (size_t) n); if (outR) std::memcpy (outR, inR != nullptr ? inR : inL, sizeof (float) * (size_t) n);
         return;
     }
@@ -171,6 +172,7 @@ void JSHost::applyOpsJSON (const std::string& opsJson)
     JSValueRef exc = nullptr;
     JSObjectCallAsFunction (ctx, fnApply, api, 1, args, &exc);
     JSStringRelease (s);
+    if (exc != nullptr) noteException ("apply", exc);
 }
 
 std::string JSHost::drainOutboxJSON (bool withAnalysers)
@@ -191,6 +193,7 @@ int JSHost::hostParam (const std::string& name, double value)
     JSValueRef exc = nullptr;
     JSValueRef r = JSObjectCallAsFunction (ctx, fnHostParam, api, 2, args, &exc);
     JSStringRelease (s);
+    if (exc != nullptr) noteException ("hostParam", exc);
     if (exc != nullptr || r == nullptr) return 0;
     return (int) JSValueToNumber (ctx, r, nullptr);
 }

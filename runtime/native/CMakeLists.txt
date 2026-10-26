@@ -59,6 +59,7 @@ target_sources(${H2P_TARGET} PRIVATE
     Source/JSHost.cpp)
 
 target_compile_definitions(${H2P_TARGET} PUBLIC
+    H2P_TARGET_NAME="${H2P_TARGET}"
     JUCE_WEB_BROWSER=1
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0

@@ -138,13 +138,16 @@ jobs:
       - name: HostTest (params, state, golden master vs Node, editor) + CPU with/without JSC JIT
         env: { NAME: "${{ steps.id.outputs.name }}", TARGET: "${{ steps.id.outputs.target }}" }
         run: |
+          set -o pipefail
           cd plugins/${{ matrix.slug }}
           HT="build/${TARGET}HostTest_artefacts/Release/${TARGET}HostTest"
           "$HT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" --editor --golden golden.json 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt"
           echo "--- AU through the same host test ---"
           "$HT" "/Library/Audio/Plug-Ins/Components/$NAME.component" --golden golden.json 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/hosttest-au.txt"
           echo "--- CPU with JavaScriptCore JIT disabled (worst case: hosts without the JIT entitlement) ---"
-          JSC_useJIT=false "$HT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" 2>&1 | grep -E "render cost|PASS|FAIL" | tee "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt"
+          JSC_useJIT=false "$HT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" > "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt" 2>&1 || { cat "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt"; exit 1; }
+          grep -E "render cost|FAIL|\[h2p" "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt" || true
+          cp ~/Library/Logs/html2plugin/*.log "$GITHUB_WORKSPACE/testlogs/" 2>/dev/null || true
           grep "render cost" "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt" "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt"
       - name: Which hosts allow in-process JIT? (informational)
         run: |

@@ -67,13 +67,24 @@ int main (int argc, char** argv)
     printf ("     name: %s  latency: %d samples\n", h.plug->getName().toRawUTF8(), h.plug->getLatencySamples());
     CHECK (h.plug->getLatencySamples() == 0, "zero latency at block %d (multiple of 128)", h.block);
 
-    printf ("== Parameters (%d) ==\n", h.plug->getParameters().size());
-    CHECK (h.plug->getParameters().size() == expectedParams, "manifest lists %d parameters", expectedParams);
+    std::vector<juce::AudioProcessorParameter*> userParams;   // JUCE's VST3 wrapper adds a synthetic Bypass parameter; it is not one of the page's controls
+    for (auto* p : h.plug->getParameters()) if (p != h.plug->getBypassParameter()) userParams.push_back (p);
+    printf ("== Parameters (%d, %d from the page) ==\n", h.plug->getParameters().size(), (int) userParams.size());
+    CHECK ((int) userParams.size() == expectedParams, "manifest lists %d parameters", expectedParams);
     for (auto* p : h.plug->getParameters()) printf ("     %-24s = %s\n", p->getName (32).toRawUTF8(), p->getCurrentValueAsText().toRawUTF8());
 
     printf ("== Default state: finite output, sane level ==\n");
     double defaultDb = 0, defaultThd = 0;
     { auto y = tail (h.run (1000, -20, 1.0), 16384); CHECK (finite (y), "no NaN/Inf at defaults"); defaultDb = rmsDb (y); defaultThd = thdPct (y, h.fs, 1000); CHECK (defaultDb > -80 && defaultDb < 0, "1 kHz -20 dBFS -> %.2f dBFS rms, THD %.3f %%", defaultDb, defaultThd);
+      // a dead engine falls back to bit-exact pass-through: catch that explicitly instead of letting a 'finite output' test smile at it
+      double ph = 0; bool identical = true; std::vector<float> ref; ref.reserve (y.size());
+      { // regenerate the exact input the plugin saw for the tail (same phase continuity as Host::run: total samples = fs*1.0)
+        int total = (int) (h.fs * 1.0); std::vector<float> all; all.reserve ((size_t) total); double a = std::pow (10.0, -20 / 20.0);
+        for (int n = 0; n < total; n++) { all.push_back ((float) (a * std::sin (ph))); ph += 2 * M_PI * 1000 / h.fs; }
+        ref = tail (all, 16384);
+      }
+      for (size_t i = 0; i < y.size(); ++i) if (y[i] != ref[i]) { identical = false; break; }
+      CHECK (! identical, "output differs from input (engine alive; bit-exact pass-through would mean the JS engine failed to start — see [h2p] lines above)");
       printf ("     render cost: %.1f %% of realtime (JavaScriptCore in this process%s)\n", 100.0 * h.lastRenderSeconds / 1.0, getenv ("JSC_useJIT") ? ", JSC_useJIT env set" : ""); }
 
     printf ("== Golden master vs Node/V8 ==\n");
@@ -111,9 +122,9 @@ int main (int argc, char** argv)
     printf ("== State save/restore ==\n");
     if (h.plug->getParameters().size() > 0)
     {
-        auto* p = h.plug->getParameters()[0]; float keep = p->getValue(); p->setValueNotifyingHost (0.731f); juce::MemoryBlock mb; h.plug->getStateInformation (mb);
-        p->setValueNotifyingHost (keep); h.plug->setStateInformation (mb.getData(), (int) mb.getSize());
-        CHECK (std::abs (p->getValue() - 0.731f) < 0.02f, "preset recall restores %s (%.3f)", p->getName (32).toRawUTF8(), p->getValue()); p->setValueNotifyingHost (keep);
+        auto* p = userParams.empty() ? h.plug->getParameters()[0] : userParams[0]; float keep = p->getValue(); p->setValueNotifyingHost (0.731f); const float stored = p->getValue(); juce::MemoryBlock mb; h.plug->getStateInformation (mb);
+        p->setValueNotifyingHost (0.0f); h.plug->setStateInformation (mb.getData(), (int) mb.getSize());
+        CHECK (std::abs (p->getValue() - stored) < 0.02f, "preset recall restores %s (%.3f -> %.3f)", p->getName (32).toRawUTF8(), stored, p->getValue()); p->setValueNotifyingHost (keep);
     }
 
     printf ("== Odd block size: 480 frames -> latency reported ==\n");
