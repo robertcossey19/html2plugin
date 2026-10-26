@@ -195,7 +195,7 @@ jobs:
           elif [ -n "${PLUGIN_CODESIGN_IDENTITY:-}" ] && [ "${PLUGIN_CODESIGN_IDENTITY}" != "-" ]; then
             echo "SIGNING_NOTE=Developer ID signed (${PLUGIN_CODESIGN_IDENTITY}) but NOT notarized — Gatekeeper still warns on first open" >> $GITHUB_ENV
           else
-            echo "SIGNING_NOTE=ad-hoc (no Apple Developer ID certificate in the repo secrets): right-click > Open, or xattr -dr com.apple.quarantine on the .pkg" >> $GITHUB_ENV
+            echo "SIGNING_NOTE=ad-hoc (no Apple Developer ID certificate in the repo secrets yet, see SIGNING.md). Approve the .pkg once (right-click > Open, or System Settings > Privacy & Security > Open Anyway on macOS 15); the installer strips quarantine, re-signs the bundles and resets the AU cache itself. No Terminal." >> $GITHUB_ENV
           fi
           cp ../../../REPORT.md "out/$SAFE-REPORT.md"; shasum -a 256 out/* > out/SHA256SUMS.txt; ls -la out
           echo "SAFE=$SAFE" >> $GITHUB_ENV
