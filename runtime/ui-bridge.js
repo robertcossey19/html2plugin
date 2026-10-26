@@ -44,7 +44,7 @@
           const r = el.getBoundingClientRect(); const x = r.left + r.width / 2, y0 = r.top + r.height / 2; const dy = (value - cur) / b.unitsPerPixelUp;
           const common = { pointerId: 7, pointerType: 'mouse', isPrimary: true, clientX: x, screenX: x };
           fire(el, 'pointerdown', Object.assign({ clientY: y0, screenY: y0, button: 0, buttons: 1 }, common));
-          fire(el, 'pointermove', Object.assign({ clientY: y0 - dy, screenY: y0 - dy, buttons: 1 }, common));
+          for (const f of [0.5, 1, 1]) fire(el, 'pointermove', Object.assign({ clientY: y0 - dy * f, screenY: y0 - dy * f, buttons: 1 }, common)); // several moves: some pages apply linked/partner state one event late
           fire(el, 'pointerup', Object.assign({ clientY: y0 - dy, screenY: y0 - dy, button: 0, buttons: 0 }, common));
           // fine trim with the wheel if the page exposes a finer step than one pixel gives us
           if (b.wheelStep) { const after = current[name]; if (typeof after === 'number') { const t = Math.round((value - after) / b.wheelStep); const dir = t < 0 ? 100 : -100; for (let i = 0; i < Math.min(Math.abs(t), 50); i++) fire(el, 'wheel', { deltaY: dir, deltaMode: 0 }); } }

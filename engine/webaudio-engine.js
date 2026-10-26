@@ -478,10 +478,17 @@
     _notePost(id, data) {
       if (!data || typeof data !== 'object' || Array.isArray(data)) return;
       this.lastPost = this.lastPost || {}; this.lastPost[id] = data;
-      if (!this.hostParamNames || !this.hostParamNames.length) return;
-      const found = {}; let any = false;
-      const scan = (o) => { for (const k in o) { const v = o[k]; if (this.hostParamNames.indexOf(k) >= 0 && (typeof v === 'number' || typeof v === 'boolean')) { found[k] = +v; any = true; } else if (v && typeof v === 'object' && !Array.isArray(v)) scan(v); } };
-      scan(data); if (any) this.outbox.push({ id: -2, data: { type: '__hostParams', values: found } });
+      // Remember, per worklet node and per parameter, the exact message that last carried it and where the value sits in it.
+      // Shapes seen in the wild: {gain: 0.5, drive: 2} (keyed), {type:'param', name:'inGainA', value: 3} (named), nested objects of either.
+      this.templates = this.templates || {}; const T = this.templates[id] = this.templates[id] || {};
+      const names = this.hostParamNames || []; const found = {}; let any = false;
+      const KEYF = ['name', 'key', 'id', 'param', 'parameter'], VALF = ['value', 'val', 'v'];
+      const scan = (o, path) => {
+        const kf = KEYF.find(k => typeof o[k] === 'string'), vf = VALF.find(k => typeof o[k] === 'number' || typeof o[k] === 'boolean');
+        if (kf && vf) { const nm = o[kf]; T[nm] = { msg: data, path: path.concat(vf) }; if (names.indexOf(nm) >= 0) { found[nm] = +o[vf]; any = true; } return; }
+        for (const k in o) { const v = o[k]; if (typeof v === 'number' || typeof v === 'boolean') { T[k] = { msg: data, path: path.concat(k) }; if (names.indexOf(k) >= 0) { found[k] = +v; any = true; } } else if (v && typeof v === 'object' && !Array.isArray(v)) scan(v, path.concat(k)); }
+      };
+      scan(data, []); if (any && names.length) this.outbox.push({ id: -2, data: { type: '__hostParams', values: found } });
     }
     /* Apply a host/automation value the way the page's UI would: re-send the last params-style message with the key changed,
        else drive the worklet AudioParam. Returns 'message' | 'audioparam' | false. */
@@ -489,11 +496,19 @@
       if (!this.alias) return false; let how = false;
       for (const id in this.alias) {
         const n = this.alias[id]; if (!(n instanceof AudioWorkletNode)) continue;
+        // 1) replay the page's own message for this parameter with the value swapped (works for keyed and named shapes alike)
+        const t = this.templates && this.templates[id] && this.templates[id][name];
+        if (t) {
+          const copy = JSON.parse(JSON.stringify(t.msg)); let o = copy; for (let i = 0; i < t.path.length - 1; i++) o = o[t.path[i]];
+          const leaf = t.path[t.path.length - 1]; o[leaf] = typeof o[leaf] === 'boolean' ? !!value : value;
+          n.port.postMessage(copy); this.lastPost[id] = copy; how = 'message'; continue;
+        }
         const last = this.lastPost && this.lastPost[id];
         if (last) {
           const setIn = (o) => { for (const k in o) { if (k === name && (typeof o[k] === 'number' || typeof o[k] === 'boolean')) { o[k] = typeof o[k] === 'boolean' ? !!value : value; return true; } if (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k]) && setIn(o[k])) return true; } return false; };
           const copy = JSON.parse(JSON.stringify(last)); if (setIn(copy)) { n.port.postMessage(copy); this.lastPost[id] = copy; how = 'message'; continue; }
         }
+        // 2) else a real AudioParam (parameterDescriptors)
         const p = n.parameters.get(name); if (p) { p.value = value; how = how || 'audioparam'; }
       }
       return how;

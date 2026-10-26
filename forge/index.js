@@ -10,6 +10,25 @@ const { extractWorkletModulesStatic } = require('./extract.js');
 
 function arg(name, def) { const i = process.argv.indexOf('--' + name); return i > 0 ? process.argv[i + 1] : def; }
 const slugify = s => (s || 'plugin').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'plugin';
+/* Pages pasted from a wrongly decoded file arrive as mojibake ("â€”" for "—"). Undo UTF-8-read-as-cp1252 when, and only when, it removes those sequences. */
+const CP1252 = { '\u20AC': 0x80, '\u201A': 0x82, '\u0192': 0x83, '\u201E': 0x84, '\u2026': 0x85, '\u2020': 0x86, '\u2021': 0x87, '\u02C6': 0x88, '\u2030': 0x89, '\u0160': 0x8A, '\u2039': 0x8B, '\u0152': 0x8C, '\u017D': 0x8E, '\u2018': 0x91, '\u2019': 0x92, '\u201C': 0x93, '\u201D': 0x94, '\u2022': 0x95, '\u2013': 0x96, '\u2014': 0x97, '\u02DC': 0x98, '\u2122': 0x99, '\u0161': 0x9A, '\u203A': 0x9B, '\u0153': 0x9C, '\u017E': 0x9E, '\u0178': 0x9F };
+function repairMojibake(text, log) {
+  const rx = /[\u00C2\u00C3][\u0080-\u00BF\u20AC\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u017D\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u017E\u0178]|\u00E2[\u0080-\u00BF\u20AC\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u017D\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u017E\u0178]/g;
+  const before = (text.match(rx) || []).length; if (!before) return text;
+  const bytes = []; for (const ch of text) { const c = ch.codePointAt(0); if (c < 0x100) bytes.push(c); else if (CP1252[ch] != null) bytes.push(CP1252[ch]); else { const b = Buffer.from(ch, 'utf8'); for (const x of b) bytes.push(x); } }
+  const fixed = Buffer.from(bytes).toString('utf8');
+  const after = (fixed.match(rx) || []).length, bad = (fixed.match(/\uFFFD/g) || []).length - (text.match(/\uFFFD/g) || []).length;
+  if (after < before && bad <= 0) { log.push(`repaired mojibake (${before} sequences, e.g. "\u00E2\u20AC\u201D" -> "\u2014")`); return fixed; }
+  return text;
+}
+/* Product names reach Xcode build scripts, bundle paths and AU/VST3 metadata: keep them printable ASCII, no commas, no quotes, 48 chars. */
+function safeProductName(t) {
+  const ascii = String(t || '').normalize('NFKD').replace(/[\u2014\u2013\u2012\u2010\u2011]/g, '-').replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '').replace(/[^\x20-\x7E]/g, '').replace(/[,"\\/:*?<>|;$`]/g, ' ').replace(/\s+/g, ' ').trim();
+  return ascii.replace(/^[\s.-]+|[\s.-]+$/g, '').slice(0, 48).trim() || 'HTML Plugin';
+}
+function titleHead(t) { // "Fairchild Model 670 — Feedback Topology, Diode-Coupled" -> "Fairchild Model 670"; hyphens inside words survive ("Fuzz-Box")
+  return String(t || '').split(/\s+[\u2014\u2013|]\s+|[\u2014\u2013|]|\s+-\s+/)[0].trim();
+}
 const humanize = k => k.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').replace(/\bdb\b/i, 'dB').replace(/^./, c => c.toUpperCase());
 function codes(slug) {
   const h = crypto.createHash('sha1').update(slug).digest(); const L = 'abcdefghijklmnopqrstuvwxyz', U = L.toUpperCase();
@@ -32,11 +51,11 @@ function stripHostingScripts(html, log) {
 
 async function forge(inputHtml, options = {}) {
   const log = []; const warnings = [];
-  inputHtml = stripHostingScripts(inputHtml, log);
+  inputHtml = repairMojibake(stripHostingScripts(inputHtml, log), log);
   const sampleRate = +(options.sampleRate || 48000);
   // 1. boot the page headlessly against the shim
   const boot = await bootPage(inputHtml, { sampleRate });
-  const title = options.name || boot.title.split(/[—|–-]/)[0].trim() || 'HTML Plugin';
+  const title = safeProductName(options.name || titleHead(boot.title) || 'HTML Plugin'); if (title !== (options.name || boot.title)) log.push(`product name: "${title}" (from <title> "${boot.title}")`);
   const slug = slugify(options.slug || title);
   // 2. worklet modules: from Blob URLs seen at boot, else static extraction from the script text
   let modules = Object.values(boot.modules);
@@ -69,6 +88,11 @@ async function forge(inputHtml, options = {}) {
     if (b && (b.kind === 'choice' || b.kind === 'select')) { p.type = 'choice'; p.choices = b.options.map(o => ({ label: o.label, value: o.param !== undefined ? o.param : o.value })); }
     else if (b && (b.kind === 'click-toggle' || b.kind === 'checkbox')) { const vals = b.kind === 'checkbox' ? [b.offValue, b.onValue] : b.values.slice().sort((x, y) => x - y); if (vals.length === 2 && vals[0] === 0 && vals[1] === 1) p.type = 'bool'; else { p.type = 'choice'; p.choices = vals.map(v => ({ label: String(v), value: v })); } }
     else { if (b && b.min != null && (p.min == null || !isFinite(p.min))) p.min = b.min; if (b && b.max != null && (p.max == null || !isFinite(p.max))) p.max = b.max; if (b && b.kind === 'range') { p.step = b.step || 0; } }
+    if (p.type === 'float' && (p.min == null || !isFinite(p.min) || p.max == null || !isFinite(p.max))) {
+      // unbound channel twin (A/B, 1/2, L/R, left/right): borrow the range of the bound sibling instead of guessing
+      const twins = [[/A$/, 'B'], [/B$/, 'A'], [/1$/, '2'], [/2$/, '1'], [/L$/, 'R'], [/R$/, 'L'], [/Left$/i, 'Right'], [/Right$/i, 'Left']];
+      for (const [rx, rep] of twins) { if (!rx.test(id)) continue; const sib = id.replace(rx, rep); const sb = boot.bindings[sib]; if (sb && sb.min != null && sb.max != null && isFinite(sb.min) && isFinite(sb.max)) { p.min = sb.min; p.max = sb.max; p.rangeFrom = sib; log.push(`param ${id}: range [${sb.min}, ${sb.max}] mirrored from ${sib}`); break; } }
+    }
     if (p.type === 'float') { if (p.min == null || !isFinite(p.min)) { p.min = Math.min(0, p.default); warnings.push(`param ${id}: no range known, guessed [${p.min}, ...]`); } if (p.max == null || !isFinite(p.max)) { p.max = Math.max(1, p.default); } if (desc && desc.minValue === 0 && desc.maxValue === 1 && !b && (bootV === 0 || bootV === 1)) { p.type = 'bool'; } }
     if (p.type === 'choice' && !p.choices.some(c => c.value === p.default)) p.choices.push({ label: String(p.default), value: p.default });
     params.push(p);
