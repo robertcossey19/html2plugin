@@ -39,7 +39,7 @@
   .panel + .panel { margin-top: 16px; }
   .panel h2 { font: 600 15px/1.2 var(--sans); margin: 0 0 14px; letter-spacing: .01em; display: flex; align-items: center; gap: 10px; }
   .panel h2 .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--line-2); color: var(--amber); font: 600 12px var(--mono); }
-  .grid { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; }
+  .grid { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; align-items: end; }
   @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } .wrap { padding: 24px 16px 60px; } }
 
 
@@ -98,7 +98,7 @@
         <input id="slug" placeholder="auto-filled from the page &lt;title&gt;" autocomplete="off" spellcheck="false">
       </div>
       <div>
-        <label>…or a CodePen / page URL instead of pasting <small>(classic pen URLs only; leave empty when pasting)</small></label>
+        <label>…or a page URL instead of pasting <small>(leave empty when pasting)</small></label>
         <input id="url" placeholder="https://codepen.io/you/pen/abcdef" autocomplete="off" spellcheck="false">
       </div>
     </div>
@@ -113,14 +113,14 @@
   </section>
 
   <section class="panel" id="status" style="display:none">
-    <h2><span class="n">2</span> Build <span class="mut" id="runlink"></span></h2>
+    <h2><span class="n">▸</span> Build <span class="mut" id="runlink"></span></h2>
     <div class="steps" id="steps"></div>
     <pre id="log"></pre>
     <div id="downloads"></div>
   </section>
 
   <section class="panel">
-    <h2><span class="n">3</span> Builds <span class="mut" style="font:400 12px var(--mono)">every successful build, newest first</span></h2>
+    <h2><span class="n">2</span> Builds <span class="mut" style="font:400 12px var(--mono)">every successful build, newest first</span></h2>
     <div class="hist" id="hist"><div class="empty">loading…</div></div>
   </section>
 
