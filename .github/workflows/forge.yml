@@ -130,18 +130,24 @@ jobs:
         # Apple's JavaScriptCore.framework only JITs in processes that carry com.apple.security.cs.allow-jit; plugin hosts
         # (Logic's AUHostingService, Cubase, ...) do not, so the worklet would run interpreted, 5-20x slower. Bun's prebuilt
         # JSC has no entitlement check and JITs wherever MAP_JIT memory exists (allow-unsigned-executable-memory, which hosts carry).
-        env: { JSC_TAG: autobuild-0b6b831aef91a68bdc68a2941b1886ac73909310, MIMALLOC_COMMIT: 92ef6587c57b262f6e6abf513f7776a2f8d12aeb }
+        env: { JSC_TAG: autobuild-0b6b831aef91a68bdc68a2941b1886ac73909310, MIMALLOC_COMMIT: 92ef6587c57b262f6e6abf513f7776a2f8d12aeb, GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
         run: |
           set -e
           D="$RUNNER_TEMP/jsc"; mkdir -p "$D/u/lib"; cd "$D"
+          # pinned tarballs: our own mirror release first (deps-jsc), upstream second; whatever came from upstream is mirrored for next time
+          MIRROR="https://github.com/${{ github.repository }}/releases/download/deps-jsc"
+          gh release view deps-jsc -R "${{ github.repository }}" >/dev/null 2>&1 || gh release create deps-jsc -R "${{ github.repository }}" --prerelease --title "deps: prebuilt JavaScriptCore (bun-webkit $JSC_TAG) + mimalloc fork" --notes "Mirror of https://github.com/oven-sh/WebKit/releases/tag/$JSC_TAG (static JavaScriptCore/WTF/bmalloc, WebKit BSD/LGPL) and https://github.com/oven-sh/mimalloc @ $MIMALLOC_COMMIT (MIT), linked into every plugin so the DSP is JIT-compiled inside DAWs." || true
+          fetch() { # $1 = asset name, $2 = upstream url
+            if curl -sfL --retry 2 -o "$1" "$MIRROR/$1"; then echo "$1: from mirror"; else
+              curl -sSfL --retry 3 -o "$1" "$2" && echo "$1: from upstream" && (gh release upload deps-jsc "$1" -R "${{ github.repository }}" --clobber >/dev/null 2>&1 && echo "  mirrored" || echo "  (mirror upload failed; continuing)"); fi; }
           for a in arm64 amd64; do
-            curl -sSfL --retry 3 -o $a.tgz "https://github.com/oven-sh/WebKit/releases/download/$JSC_TAG/bun-webkit-macos-$a.tar.gz"
-            mkdir -p $a && tar xzf $a.tgz -C $a && rm $a.tgz
+            fetch bun-webkit-macos-$a.tar.gz "https://github.com/oven-sh/WebKit/releases/download/$JSC_TAG/bun-webkit-macos-$a.tar.gz"
+            mkdir -p $a && tar xzf bun-webkit-macos-$a.tar.gz -C $a && rm bun-webkit-macos-$a.tar.gz
           done
           cp -R arm64/bun-webkit/include u/include
           for l in libJavaScriptCore.a libWTF.a libbmalloc.a; do lipo -create arm64/bun-webkit/lib/$l amd64/bun-webkit/lib/$l -output u/lib/$l; done
           # that JSC build allocates through Bun's mimalloc fork (mi_theap_* API); compile its single unity TU, no malloc override
-          curl -sSfL --retry 3 -o mi.tgz "https://github.com/oven-sh/mimalloc/archive/$MIMALLOC_COMMIT.tar.gz" && mkdir mi && tar xzf mi.tgz -C mi --strip-components=1
+          fetch mimalloc-$MIMALLOC_COMMIT.tar.gz "https://github.com/oven-sh/mimalloc/archive/$MIMALLOC_COMMIT.tar.gz" && mkdir mi && tar xzf mimalloc-$MIMALLOC_COMMIT.tar.gz -C mi --strip-components=1
           MIFLAGS="-O2 -DNDEBUG -DMI_STATIC_LIB -DMI_SKIP_COLLECT_ON_EXIT=1 -DMI_NO_PROCESS_DETACH=1 -DMI_FREE_USE_PAGEMAP=1 -DMI_BUILD_RELEASE -DMI_CMAKE_BUILD_TYPE=release -fvisibility=hidden -Wno-deprecated -Wno-static-in-inline -Imi/include -mmacosx-version-min=13.0"
           for a in arm64 x86_64; do clang -arch $a $MIFLAGS -c mi/src/static.c -o static-$a.o; ar rcs libmimalloc-$a.a static-$a.o; done
           lipo -create libmimalloc-arm64.a libmimalloc-x86_64.a -output u/lib/libmimalloc.a
