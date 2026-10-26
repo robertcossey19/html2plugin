@@ -1,4 +1,6 @@
 #include "JSHost.h"
+#include <mutex>
+#include <vector>
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
@@ -60,15 +62,29 @@ var H2P = (function () {
 })();
 )JS";
 
+// VM pool. A JSC VM owns concurrent compiler and GC threads; tearing one down while a DFG/FTL plan for it is still in
+// flight is a race we do not need to take inside somebody's DAW. Hosts call prepareToPlay with new rates/blocks
+// dozens of times (pluginval: every rate x block combination), so VMs are created once per plugin instance slot and
+// handed back to a free list instead of destroyed. A new global context inside an existing VM is the well-trodden
+// WebKit path (every page load does it). One VM per concurrently alive instance keeps instances lock-free of each other.
+static std::mutex& poolMutex() { static std::mutex m; return m; }
+static std::vector<JSContextGroupRef>& freeGroups() { static std::vector<JSContextGroupRef> v; return v; }
+static JSContextGroupRef acquireGroup()
+{
+    { std::lock_guard<std::mutex> lk (poolMutex()); auto& f = freeGroups(); if (! f.empty()) { JSContextGroupRef g = f.back(); f.pop_back(); return g; } }
+    return JSContextGroupCreate();
+}
+static void returnGroup (JSContextGroupRef g) { if (g == nullptr) return; std::lock_guard<std::mutex> lk (poolMutex()); freeGroups().push_back (g); }
+
 JSHost::JSHost() {}
-JSHost::~JSHost() { release(); }
+JSHost::~JSHost() { release(); returnGroup (group); group = nullptr; }
 
 void JSHost::release()
 {
     if (ctx == nullptr) return;
     for (JSObjectRef* o : { &api, &fnRender, &fnApply, &fnDrain, &fnHostParam, &fnErrors, &fnDescribe, &taInL, &taInR, &taOutL, &taOutR })
         if (*o != nullptr) { JSValueUnprotect (ctx, *o); *o = nullptr; }
-    JSGlobalContextRelease (ctx);
+    JSGlobalContextRelease (ctx);           // the context goes; the VM (group) stays and is reused by the next init()
     ctx = nullptr; ready = false;
 }
 
@@ -147,11 +163,13 @@ bool JSHost::init (double sampleRate, int maxBlockSize, const std::string& engin
    #else
     engineInfo = "Apple JavaScriptCore.framework (JIT only when the host process carries com.apple.security.cs.allow-jit)";
    #endif
-    ctx = JSGlobalContextCreate (nullptr);
+    if (group == nullptr) group = acquireGroup();   // JSC_* env is read here, by the first VM init in the process
    #if H2P_STATIC_JSC
     forgetStaticJSCEnv();
    #endif
-    if (ctx == nullptr) { err = "JSGlobalContextCreate failed"; return false; }
+    if (group == nullptr) { err = "JSContextGroupCreate failed"; return false; }
+    ctx = JSGlobalContextCreateInGroup (group, nullptr);
+    if (ctx == nullptr) { err = "JSGlobalContextCreateInGroup failed"; return false; }
     global = JSContextGetGlobalObject (ctx);
 
     if (! evaluate (engineJs, "engine.js", err)) return false;

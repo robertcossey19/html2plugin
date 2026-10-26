@@ -34,6 +34,7 @@ public:
 
 private:
     JSGlobalContextRef ctx = nullptr;
+    JSContextGroupRef group = nullptr;   // the VM. Pooled per process and never destroyed: see JSHost.cpp acquireGroup()
     JSObjectRef global = nullptr, api = nullptr;
     JSObjectRef fnRender = nullptr, fnApply = nullptr, fnDrain = nullptr, fnHostParam = nullptr, fnErrors = nullptr, fnDescribe = nullptr;
     JSObjectRef taInL = nullptr, taInR = nullptr, taOutL = nullptr, taOutR = nullptr;
