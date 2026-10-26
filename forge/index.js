@@ -3,7 +3,8 @@
  * Usage: node forge/index.js <input.html> --out <dir> [--name "Plugin Name"] [--vendor "Vendor"] [--slug my-plugin] [--sr 48000]
  * The page runs untouched. We only (1) capture its worklet module(s) and boot-time Web Audio graph, (2) learn its controls empirically,
  * (3) emit a manifest the generic native runtime consumes. No DSP is rewritten. */
-const fs = require('fs'); const path = require('path'); const crypto = require('crypto');
+const fs = require('fs'); const path = require('path');
+const acorn = require('acorn'); const crypto = require('crypto');
 const { bootPage, flattenParams } = require('./boot.js');
 const { extractWorkletModulesStatic } = require('./extract.js');
 
@@ -17,9 +18,9 @@ function codes(slug) {
 async function inlineExternalAssets(html, log) {
   const fetchText = async (url) => { try { const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }); if (!r.ok) throw new Error(r.status); return await r.text(); } catch (e) { log.push(`could not inline ${url}: ${e.message} (left as remote reference; needs network at runtime)`); return null; } };
   const scripts = [...html.matchAll(/<script\b([^>]*?)\bsrc=["'](https?:\/\/[^"']+)["']([^>]*)>\s*<\/script>/gi)];
-  for (const m of scripts) { const t = await fetchText(m[2]); if (t != null) { html = html.replace(m[0], `<script data-inlined-from="${m[2]}">\n${t.replace(/<\/script/gi, '<\\/script')}\n</script>`); log.push(`inlined script ${m[2]} (${t.length} bytes)`); } }
+  for (const m of scripts) { const t = await fetchText(m[2]); if (t != null) { const rep = `<script data-inlined-from="${m[2]}">\n${t.replace(/<\/script/gi, '<\\/script')}\n</script>`; html = html.replace(m[0], () => rep); /* function replacer: asset text may contain $' / $& patterns (Tailwind does) */ log.push(`inlined script ${m[2]} (${t.length} bytes)`); } }
   const links = [...html.matchAll(/<link\b[^>]*rel=["']stylesheet["'][^>]*href=["'](https?:\/\/[^"']+)["'][^>]*>/gi), ...html.matchAll(/<link\b[^>]*href=["'](https?:\/\/[^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi)];
-  for (const m of links) { const t = await fetchText(m[1]); if (t != null) { html = html.replace(m[0], `<style data-inlined-from="${m[1]}">\n${t}\n</style>`); log.push(`inlined stylesheet ${m[1]} (${t.length} bytes)`); } }
+  for (const m of links) { const t = await fetchText(m[1]); if (t != null) { const rep = `<style data-inlined-from="${m[1]}">\n${t.replace(/<\/style/gi, '<\\/style')}\n</style>`; html = html.replace(m[0], () => rep); log.push(`inlined stylesheet ${m[1]} (${t.length} bytes)`); } }
   return html;
 }
 
@@ -81,6 +82,18 @@ async function forge(inputHtml, options = {}) {
   };
   // 5. shipped page: original HTML with remote assets inlined (so the plugin works offline)
   const shippedHtml = await inlineExternalAssets(inputHtml, log);
+  // 6. guard: every inline script in the shipped page must parse, and the shipped page must boot to the same graph as the original
+  {
+    const rx = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi; let m, idx = 0;
+    while ((m = rx.exec(shippedHtml))) { idx++; if (!m[2].trim() || /\bsrc=/.test(m[1])) continue; const type = (m[1].match(/type=["']([^"']+)/) || [])[1]; if (type && !/javascript|module/.test(type)) continue;
+      try { acorn.parse(m[2], { ecmaVersion: 'latest', sourceType: /module/.test(type || '') ? 'module' : 'script', allowAwaitOutsideFunction: true }); }
+      catch (e) { throw new Error(`shipped page: inline script #${idx} does not parse (${e.message}) — asset inlining corrupted the page`); } }
+    const sig = ops => ops.filter(o => o.op !== 'log' && o.op !== 'post' && o.op !== 'param').map(o => o.op + ':' + (o.type || o.name || '') + (o.from != null ? ':' + o.from + '>' + o.to : '')).join(' ');
+    const reboot = await bootPage(shippedHtml, { sampleRate, offline: true });
+    const a = sig(boot.bootOps), b = sig(reboot.bootOps);
+    if (a !== b) throw new Error(`shipped page boots to a different graph than the original.\n  original: ${a}\n  shipped:  ${b}\n  page errors: ${JSON.stringify(reboot.errors.slice(0, 5))}`);
+    log.push(`shipped page re-booted headless: same graph (${reboot.bootOps.length} ops)`);
+  }
   return { manifest, modules, shippedHtml };
 }
 

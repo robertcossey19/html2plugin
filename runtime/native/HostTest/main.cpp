@@ -86,7 +86,10 @@ int main (int argc, char** argv)
       }
       for (size_t i = 0; i < y.size(); ++i) if (y[i] != ref[i]) { identical = false; break; }
       CHECK (! identical, "output differs from input (engine alive; bit-exact pass-through would mean the JS engine failed to start — see [h2p] lines above)");
-      printf ("     render cost: %.1f %% of realtime (JavaScriptCore in this process%s)\n", 100.0 * h.lastRenderSeconds / 1.0, getenv ("JSC_useJIT") ? ", JSC_useJIT env set" : ""); }
+      const double coldCost = 100.0 * h.lastRenderSeconds / 1.0;
+      h.run (1000, -20, 2.0);                       // JIT warm-up (baseline -> DFG -> FTL tiers)
+      h.run (1000, -20, 3.0);
+      printf ("     render cost: %.1f %% of realtime warm (%.1f %% cold, first second incl. JIT compile) (JavaScriptCore in this process%s)\n", 100.0 * h.lastRenderSeconds / 3.0, coldCost, getenv ("JSC_useJIT") ? ", JSC_useJIT env set" : ""); }
 
     printf ("== Golden master vs Node/V8 ==\n");
     if (goldenPath.isNotEmpty())
