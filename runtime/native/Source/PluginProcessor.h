@@ -51,7 +51,9 @@ public:
     std::string hostValuesJSON() const;                                   // {"id": engineeringValue, ...} for applyHostParams
     bool takeDirtyHostParams (std::string& json);                         // host/automation changes not yet shown in the UI
     int graphGeneration() const { return generation.load(); }            // bumps when the engine is rebuilt (editor must reload the page)
-    void setEditorOpen (bool open) { editorOpen.store (open); }
+    void setEditorOpen (bool open);                                       // also logs a graph snapshot in debug mode (H2P_DEBUG=1)
+    void requestGraphDump() { dumpRequested = true; }                     // audio thread logs describe() on its next drain
+    static bool debugEnabled();                                           // env H2P_DEBUG=1 or ~/Library/Logs/html2plugin/DEBUG exists
     std::function<void (const std::string&)> onOutbox;                    // raw outbox JSON for the page (set/cleared by the editor)
     juce::String lastEngineError;                                         // for display/logging
 
@@ -76,7 +78,8 @@ private:
     double preparedRate = 0; int preparedBlock = 0;
     bool zeroLatency = false;
     std::atomic<int> generation { 0 };
-    std::atomic<bool> editorOpen { false }, pageLoading { false };
+    std::atomic<bool> editorOpen { false }, pageLoading { false }, dumpRequested { false };
+    std::vector<std::string> dumpPending;                                 // graph snapshots taken on the audio thread, logged from the timer
     int reapplyBlocks = 0, drainCountdown = 0, drainEvery = 8, clockTick = 0;
 
     // UI -> audio ops and audio -> UI outbox (both message-thread pushed / audio-thread try-locked)

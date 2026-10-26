@@ -21,6 +21,7 @@ public:
     void applyOpsJSON (const std::string& opsJson);                 // RPC ops recorded by the WebView shim (JSON array)
     std::string drainOutboxJSON (bool withAnalysers);               // {time, msgs:[{id,data}], analysers?}
     int hostParam (const std::string& name, double value);          // 0 = no such param, 1 = applied
+    std::string describe();                                         // JSON snapshot of the live graph (diagnostics; not RT-safe)
     std::string takeErrors();                                       // JSON array of engine error strings (empties the list)
     std::vector<std::string> takeNativeErrors() { std::vector<std::string> v; v.swap (nativeErrors); return v; } // exceptions thrown out of apply/render/hostParam
 
@@ -31,7 +32,7 @@ public:
 private:
     JSGlobalContextRef ctx = nullptr;
     JSObjectRef global = nullptr, api = nullptr;
-    JSObjectRef fnRender = nullptr, fnApply = nullptr, fnDrain = nullptr, fnHostParam = nullptr, fnErrors = nullptr;
+    JSObjectRef fnRender = nullptr, fnApply = nullptr, fnDrain = nullptr, fnHostParam = nullptr, fnErrors = nullptr, fnDescribe = nullptr;
     JSObjectRef taInL = nullptr, taInR = nullptr, taOutL = nullptr, taOutR = nullptr;
     std::vector<float> bInL, bInR, bOutL, bOutR;
     bool ready = false;

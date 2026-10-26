@@ -201,12 +201,27 @@
   window.AudioWorkletNode = AudioWorkletNodeShim; window.AudioBuffer = AudioBufferShim; window.AudioParam = AudioParamShim; window.AudioNode = AudioNodeShim;
   window.AudioWorklet = function () { }; window.MediaStream = FakeStream;
   if (!navigator.mediaDevices) { try { Object.defineProperty(navigator, 'mediaDevices', { value: {}, configurable: true }); } catch (e) { navigator.mediaDevices = {}; } }
-  navigator.mediaDevices.getUserMedia = () => Promise.resolve(new FakeStream());
+  const fakeGUM = () => Promise.resolve(new FakeStream());
+  try { navigator.mediaDevices.getUserMedia = fakeGUM; } catch (e) { }
+  if (navigator.mediaDevices.getUserMedia !== fakeGUM) { try { Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: fakeGUM, configurable: true, writable: true }); } catch (e) { } }
+  if (navigator.mediaDevices.getUserMedia !== fakeGUM) { try { Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia: fakeGUM }, configurable: true }); } catch (e) { } }
   navigator.mediaDevices.enumerateDevices = () => Promise.resolve([{ deviceId: 'default', kind: 'audioinput', label: 'Plugin input', groupId: 'h2p' }]);
   navigator.mediaDevices.addEventListener = navigator.mediaDevices.addEventListener || function () { };
   // Blob URLs for worklet modules: keep real behaviour, the forge has already matched module text to the registry
   window.__h2p = { version: 1, now, nodesById, receive, contexts: AudioContextShim.instances, flush, emit, onHostParam: null, serializeMessage, reviveMessage,
     // Host -> UI: let the host push a parameter change the way the page's own UI would (best-effort; the forge wires setters when it finds them)
     lastParamsMessage: null };
+  // Page diagnostics -> native log (console.error/warn, uncaught errors, unhandled rejections). The engine ignores 'log' ops; the editor writes them to the plugin log.
+  (function () {
+    const fwd = (level, args) => { try { emit({ op: 'log', level, text: Array.from(args).map(a => (a && a.stack) ? String(a.stack) : (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ').slice(0, 2000) }); } catch (e) { } };
+    const ce = console.error.bind(console), cw = console.warn.bind(console);
+    console.error = function () { fwd('error', arguments); ce.apply(console, arguments); };
+    console.warn = function () { fwd('warn', arguments); cw.apply(console, arguments); };
+    if (typeof window.addEventListener === 'function') {
+      window.addEventListener('error', e => fwd('uncaught', [e.message, e.filename + ':' + e.lineno]));
+      window.addEventListener('unhandledrejection', e => fwd('unhandledrejection', [e.reason && (e.reason.stack || e.reason.message) || e.reason]));
+    }
+    fwd('info', ['shim installed; mediaDevices ' + (navigator.mediaDevices ? 'present' : 'MISSING') + ', getUserMedia is ' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia === fakeGUM ? 'shim' : 'NOT the shim') + ', secureContext=' + window.isSecureContext + ', origin=' + (typeof location !== 'undefined' ? location.origin : '?')]);
+  })();
   log('shim installed, sampleRate', SR);
 })();

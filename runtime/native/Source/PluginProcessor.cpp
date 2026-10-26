@@ -12,6 +12,19 @@ void H2PProcessor::log (const juce::String& line)
     logFile.appendText (juce::Time::getCurrentTime().toISO8601 (true) + " " + line + "\n");
 }
 
+bool H2PProcessor::debugEnabled()
+{
+    static const bool on = [] { const char* e = getenv ("H2P_DEBUG"); return (e != nullptr && e[0] == '1')
+        || juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("Library/Logs/html2plugin/DEBUG").exists(); }();
+    return on;
+}
+
+void H2PProcessor::setEditorOpen (bool open)
+{
+    editorOpen.store (open);
+    if (debugEnabled()) { log (open ? "editor opened" : "editor closed"); dumpRequested = true; }
+}
+
 void H2PProcessor::flushEngineErrors (const char* stage)
 {
     if (! js) return;
@@ -155,6 +168,7 @@ bool H2PProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 
 void H2PProcessor::enqueueOps (const std::string& opsJson)
 {
+    if (debugEnabled()) log ("ops from page (" + juce::String ((int) opsJson.size()) + " B): " + juce::String (opsJson).substring (0, 20000));
     const juce::SpinLock::ScopedLockType sl (opsLock);
     opsPending.push_back (opsJson);
 }
@@ -208,6 +222,7 @@ void H2PProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     if (--drainCountdown <= 0)
     {
         drainCountdown = drainEvery;
+        if (dumpRequested.exchange (false)) { std::string d = js->describe(); if (outLock.tryEnter()) { dumpPending.push_back (std::move (d)); outLock.exit(); } }
         std::string out = js->drainOutboxJSON (editorOpen.load());
         const bool hasMsgs = out.find ("\"msgs\":[]") == std::string::npos;
         const bool hasAnalysers = out.find ("\"analysers\":{") != std::string::npos && out.find ("\"analysers\":{}") == std::string::npos;
@@ -219,8 +234,9 @@ void H2PProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
 
 void H2PProcessor::timerCallback()
 {
-    std::vector<std::string> work;
-    { const juce::SpinLock::ScopedLockType sl (outLock); work.swap (outPending); }
+    std::vector<std::string> work, dumps;
+    { const juce::SpinLock::ScopedLockType sl (outLock); work.swap (outPending); dumps.swap (dumpPending); }
+    for (auto& d : dumps) log ("graph: " + juce::String (d));
     for (auto& s : work)
     {
         juce::var v = juce::JSON::parse (juce::String (s));

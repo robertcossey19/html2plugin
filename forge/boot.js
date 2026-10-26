@@ -55,7 +55,7 @@ async function bootPage(html, opts = {}) {
   }
   const deadline = Date.now() + timeoutMs; while (Date.now() < deadline && !graphBuilt()) { await sleep(100); flush(); }
   await sleep(300); flush();
-  const bootOps = ops.slice();
+  const bootOps = ops.filter(o => o.op !== 'log');   // page console forwarding is not part of the graph
   // which blob urls were worklet modules
   const modules = {}; for (const u of addModuleUrls) if (blobs[u]) modules[u] = blobs[u];
   const unresolvedModules = addModuleUrls.filter(u => !blobs[u]);

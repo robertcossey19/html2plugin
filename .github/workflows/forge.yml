@@ -137,7 +137,7 @@ jobs:
           ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --timeout-ms 900000 --validate-in-process --output-dir testlogs "/Library/Audio/Plug-Ins/Components/$NAME.component" 2>&1 | tee testlogs/pluginval-au.txt
           grep -q "^SUCCESS" testlogs/pluginval-au.txt
       - name: HostTest (params, state, golden master vs Node, editor) + CPU with/without JSC JIT
-        env: { NAME: "${{ steps.id.outputs.name }}", TARGET: "${{ steps.id.outputs.target }}" }
+        env: { NAME: "${{ steps.id.outputs.name }}", TARGET: "${{ steps.id.outputs.target }}", H2P_DEBUG: "1" }
         run: |
           set -o pipefail
           cd plugins/${{ matrix.slug }}

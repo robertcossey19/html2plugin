@@ -445,6 +445,7 @@
           case 'post': { const n = this._n(op.id); n.port.postMessage(op.data); this._notePost(op.id, op.data); return; }
           case 'reset': return this.resetGraph();
           case 'setSampleRate': return;
+          case 'log': return;   // page console/error forwarding; consumed by the native editor
           default: throw new Error('unknown op ' + op.op);
         }
       } catch (e) { this._error('applyOp ' + JSON.stringify(op).slice(0, 200) + ': ' + (e && e.message || e)); }
@@ -459,6 +460,19 @@
       this.nodes = [this.destination, this.input]; this.destination.id = 0; this.input.id = 1; this.alias = {}; this.lastPost = {};
       return true;
     }
+    /* ---- diagnostics: a compact picture of the live graph (for logs / HostTest) ---- */
+    describe() {
+      const idOf = n => { for (const k in (this.alias || {})) if (this.alias[k] === n) return +k; return n === this.destination ? 'dest' : n === this.input ? 'in' : n.id; };
+      const nodes = this.nodes.map(n => ({
+        id: idOf(n), type: n.constructor.name + (n.name ? '(' + n.name + ')' : ''),
+        inputs: n.inputs.map(list => list.map(c => idOf(c.node) + (c.output ? ':' + c.output : ''))),
+        paramInputs: Object.keys(n.params || {}).filter(k => n.params[k].inputs && n.params[k].inputs.length).map(k => k + '<-' + n.params[k].inputs.map(c => idOf(c.node)).join(',')),
+        gain: n.params && n.params.gain ? +n.params.gain.value.toFixed(4) : undefined,
+        started: n._started !== undefined ? !!n._started : undefined, alive: n.alive
+      }));
+      return { currentTime: +this.currentTime.toFixed(3), passThrough: !this.destination.inputs.some(l => l.length), nodes };
+    }
+    describeJSON() { try { return JSON.stringify(this.describe()); } catch (e) { return JSON.stringify({ error: String(e) }); } }
     /* ---- host parameter bridge ---- */
     setHostParamNames(names) { this.hostParamNames = names || []; }
     _notePost(id, data) {

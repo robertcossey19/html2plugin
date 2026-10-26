@@ -16,7 +16,8 @@ var H2P = (function () {
     apply: function (s) { ctx.applyJSON(s); },
     drain: function (withAn) { return ctx.drainOutboxJSON(!!withAn); },
     hostParam: function (name, v) { return ctx.hostParam(name, v) ? 1 : 0; },
-    errors: function () { var e = ctx ? ctx.errors.splice(0) : []; return JSON.stringify(e); }
+    errors: function () { var e = ctx ? ctx.errors.splice(0) : []; return JSON.stringify(e); },
+    describe: function () { return ctx ? ctx.describeJSON() : '{}'; }
   };
 })();
 )JS";
@@ -27,7 +28,7 @@ JSHost::~JSHost() { release(); }
 void JSHost::release()
 {
     if (ctx == nullptr) return;
-    for (JSObjectRef* o : { &api, &fnRender, &fnApply, &fnDrain, &fnHostParam, &fnErrors, &taInL, &taInR, &taOutL, &taOutR })
+    for (JSObjectRef* o : { &api, &fnRender, &fnApply, &fnDrain, &fnHostParam, &fnErrors, &fnDescribe, &taInL, &taInR, &taOutL, &taOutR })
         if (*o != nullptr) { JSValueUnprotect (ctx, *o); *o = nullptr; }
     JSGlobalContextRelease (ctx);
     ctx = nullptr; ready = false;
@@ -118,7 +119,7 @@ bool JSHost::init (double sampleRate, int maxBlockSize, const std::string& engin
 
     JSObjectRef fnInit = getFunction (api, "init");
     fnRender = getFunction (api, "render"); fnApply = getFunction (api, "apply"); fnDrain = getFunction (api, "drain");
-    fnHostParam = getFunction (api, "hostParam"); fnErrors = getFunction (api, "errors");
+    fnHostParam = getFunction (api, "hostParam"); fnErrors = getFunction (api, "errors"); fnDescribe = getFunction (api, "describe");
     if (! fnInit || ! fnRender || ! fnApply || ! fnDrain || ! fnHostParam || ! fnErrors) { err = "glue functions missing"; return false; }
 
     {
@@ -204,5 +205,14 @@ std::string JSHost::takeErrors()
     JSValueRef exc = nullptr;
     JSValueRef r = JSObjectCallAsFunction (ctx, fnErrors, api, 0, nullptr, &exc);
     if (exc != nullptr || r == nullptr) return "[]";
+    return toStdString (r);
+}
+
+std::string JSHost::describe()
+{
+    if (! ready || fnDescribe == nullptr) return "{}";
+    JSValueRef exc = nullptr;
+    JSValueRef r = JSObjectCallAsFunction (ctx, fnDescribe, api, 0, nullptr, &exc);
+    if (exc != nullptr || r == nullptr) return "{}";
     return toStdString (r);
 }

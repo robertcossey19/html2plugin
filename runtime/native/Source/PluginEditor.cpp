@@ -28,6 +28,7 @@ juce::WebBrowserComponent::Options H2PEditor::makeOptions()
             if (auto* ops = payload["ops"].getArray())
             {
                 if (ops->isEmpty()) return;
+                for (auto& op : *ops) if (op["op"].toString() == "log") H2PProcessor::log ("page " + op["level"].toString() + ": " + op["text"].toString());
                 proc.enqueueOps (juce::JSON::toString (payload["ops"], true).toStdString());
                 receivedOps = true;
                 // once the page has posted its own defaults, impose the host's state on its controls
