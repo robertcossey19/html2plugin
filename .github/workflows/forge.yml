@@ -1,0 +1,176 @@
+name: Forge HTML -> VST3/AU
+
+# Drop an HTML plugin page into inbox/<slug>.html (or run manually with a slug) and this:
+#   1. forges it (headless boot, worklet capture, control probing, manifest) and computes the Node/V8 golden master
+#   2. builds a universal macOS VST3 + AU + Standalone with JUCE 8 on Apple hardware
+#   3. tests: installer, auval (Logic's gatekeeper), pluginval strictness 10, HostTest (params, state, golden master vs Node, editor), CPU with/without JIT
+#   4. publishes a GitHub Release with .pkg installers
+on:
+  push:
+    paths: [ 'inbox/**', 'engine/**', 'runtime/**', 'forge/**', 'tests/**', '.github/workflows/forge.yml' ]
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "inbox file to build (without .html); empty = all inbox files"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  forge:
+    runs-on: ubuntu-latest
+    outputs:
+      slugs: ${{ steps.list.outputs.slugs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci || npm i
+      - name: Engine self-tests (reference worklet)
+        run: node tests/run-analogexact.js && node tests/shim-roundtrip.js && node tests/hostparam.js
+      - id: list
+        name: Pick inbox files
+        run: |
+          for u in inbox/*.url; do [ -f "$u" ] && node forge/fetch-source.js "$u"; done || true
+          if [ -n "${{ github.event.inputs.slug }}" ]; then FILES="inbox/${{ github.event.inputs.slug }}.html"; else FILES=$(ls inbox/*.html 2>/dev/null || true); fi
+          SLUGS=$(for f in $FILES; do basename "$f" .html; done | jq -R . | jq -sc .)
+          echo "slugs=$SLUGS" >> $GITHUB_OUTPUT; echo "building: $SLUGS"
+      - name: Forge every inbox page
+        run: |
+          mkdir -p plugins
+          for f in $(echo '${{ steps.list.outputs.slugs }}' | jq -r '.[]'); do
+            echo "::group::forge $f"
+            node forge/index.js "inbox/$f.html" --out "plugins/$f" --slug "$f" --vendor "${{ github.repository_owner }}"
+            node tests/golden.js "plugins/$f"
+            echo "::endgroup::"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forged-projects
+          path: plugins/
+          if-no-files-found: error
+
+  mac:
+    needs: forge
+    if: ${{ needs.forge.outputs.slugs != '[]' && needs.forge.outputs.slugs != '' }}
+    runs-on: macos-14
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        slug: ${{ fromJson(needs.forge.outputs.slugs) }}
+    env:
+      HAS_CERT: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: forged-projects, path: plugins }
+      - name: Import Developer ID certificate (optional)
+        if: env.HAS_CERT != ''
+        env:
+          P12: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          P12_PW: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          echo "$P12" | base64 --decode > cert.p12
+          security create-keychain -p ci build.keychain; security default-keychain -s build.keychain; security unlock-keychain -p ci build.keychain
+          security import cert.p12 -k build.keychain -P "$P12_PW" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
+          echo "PLUGIN_CODESIGN_IDENTITY=${{ secrets.APPLE_SIGN_IDENTITY }}" >> $GITHUB_ENV
+          echo "PLUGIN_DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}" >> $GITHUB_ENV
+      - name: Read plugin identity
+        id: id
+        run: |
+          cd plugins/${{ matrix.slug }}
+          get() { sed -n "s/^set($1 \"\(.*\)\")$/\1/p" plugin.cmake; }
+          NAME=$(get H2P_NAME); MANU=$(get H2P_MANU_CODE); CODE=$(get H2P_PLUGIN_CODE); BID=$(get H2P_BUNDLE_ID); VER=$(get H2P_VERSION)
+          TARGET=$(echo "${{ matrix.slug }}" | sed 's/[^A-Za-z0-9_]/_/g')
+          echo "name=$NAME" >> $GITHUB_OUTPUT; echo "manu=$MANU" >> $GITHUB_OUTPUT; echo "code=$CODE" >> $GITHUB_OUTPUT; echo "bid=$BID" >> $GITHUB_OUTPUT; echo "ver=$VER" >> $GITHUB_OUTPUT; echo "target=$TARGET" >> $GITHUB_OUTPUT
+          echo "$NAME ($MANU/$CODE) target=$TARGET"; cat REPORT.md
+      - name: Configure + build (universal, Release)
+        run: |
+          cd plugins/${{ matrix.slug }}
+          cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+                -DPLUGIN_CODESIGN_IDENTITY="${PLUGIN_CODESIGN_IDENTITY:--}" -DPLUGIN_DEVELOPMENT_TEAM="${PLUGIN_DEVELOPMENT_TEAM:-}"
+          cmake --build build --config Release --parallel
+      - name: Sign + verify
+        env: { NAME: "${{ steps.id.outputs.name }}", TARGET: "${{ steps.id.outputs.target }}" }
+        run: |
+          cd plugins/${{ matrix.slug }}/build/${TARGET}_artefacts/Release
+          ID="${PLUGIN_CODESIGN_IDENTITY:--}"
+          for b in "VST3/$NAME.vst3" "AU/$NAME.component" "Standalone/$NAME.app"; do
+            [ -d "$b" ] || continue
+            if [ "$ID" = "-" ]; then codesign --force --deep --sign - --timestamp=none "$b"; else codesign --force --deep --sign "$ID" --timestamp --options runtime "$b"; fi
+            codesign --verify --deep --strict --verbose=2 "$b"; lipo -info "$b/Contents/MacOS/$NAME"
+          done
+      - name: Package (.pkg installers + zips)
+        env: { NAME: "${{ steps.id.outputs.name }}", TARGET: "${{ steps.id.outputs.target }}", BID: "${{ steps.id.outputs.bid }}", VER: "${{ steps.id.outputs.ver }}" }
+        run: |
+          cd plugins/${{ matrix.slug }}/build/${TARGET}_artefacts/Release
+          mkdir -p out; SAFE=$(echo "$NAME" | sed 's/[^A-Za-z0-9._-]/_/g')
+          ditto -c -k --keepParent "VST3/$NAME.vst3" "out/$SAFE.vst3.zip"
+          ditto -c -k --keepParent "AU/$NAME.component" "out/$SAFE.component.zip"
+          [ -d "Standalone/$NAME.app" ] && ditto -c -k --keepParent "Standalone/$NAME.app" "out/$SAFE-Standalone.app.zip"
+          pkgbuild --component "VST3/$NAME.vst3" --install-location /Library/Audio/Plug-Ins/VST3 --identifier "$BID.vst3" --version "$VER" "out/$SAFE-VST3-Installer.pkg"
+          pkgbuild --component "AU/$NAME.component" --install-location /Library/Audio/Plug-Ins/Components --identifier "$BID.au" --version "$VER" "out/$SAFE-AU-Installer.pkg"
+          productbuild --package "out/$SAFE-VST3-Installer.pkg" --package "out/$SAFE-AU-Installer.pkg" "out/$SAFE-Installer-VST3+AU.pkg"
+          cp ../../../REPORT.md "out/$SAFE-REPORT.md"; shasum -a 256 out/* > out/SHA256SUMS.txt; ls -la out
+          echo "SAFE=$SAFE" >> $GITHUB_ENV
+      - name: Install like the user does, then auval (Logic's gatekeeper)
+        env: { NAME: "${{ steps.id.outputs.name }}", TARGET: "${{ steps.id.outputs.target }}", MANU: "${{ steps.id.outputs.manu }}", CODE: "${{ steps.id.outputs.code }}" }
+        run: |
+          cd plugins/${{ matrix.slug }}/build/${TARGET}_artefacts/Release
+          sudo installer -pkg "out/$SAFE-Installer-VST3+AU.pkg" -target / -verbose
+          test -d "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"; test -d "/Library/Audio/Plug-Ins/Components/$NAME.component"
+          killall -9 AudioComponentRegistrar 2>/dev/null || true; sleep 2
+          mkdir -p "$GITHUB_WORKSPACE/testlogs"
+          auval -v aufx "$CODE" "$MANU" 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/auval.txt"
+          grep -q "AU VALIDATION SUCCEEDED" "$GITHUB_WORKSPACE/testlogs/auval.txt"
+      - name: pluginval strictness 10 (VST3 + AU)
+        env: { NAME: "${{ steps.id.outputs.name }}" }
+        run: |
+          curl -sL -o pv.zip https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip && unzip -q pv.zip
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --timeout-ms 900000 --validate-in-process --output-dir testlogs "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" 2>&1 | tee testlogs/pluginval-vst3.txt
+          grep -q "^SUCCESS" testlogs/pluginval-vst3.txt
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --timeout-ms 900000 --validate-in-process --output-dir testlogs "/Library/Audio/Plug-Ins/Components/$NAME.component" 2>&1 | tee testlogs/pluginval-au.txt
+          grep -q "^SUCCESS" testlogs/pluginval-au.txt
+      - name: HostTest (params, state, golden master vs Node, editor) + CPU with/without JSC JIT
+        env: { NAME: "${{ steps.id.outputs.name }}", TARGET: "${{ steps.id.outputs.target }}" }
+        run: |
+          cd plugins/${{ matrix.slug }}
+          HT="build/${TARGET}HostTest_artefacts/Release/${TARGET}HostTest"
+          "$HT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" --editor --golden golden.json 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt"
+          echo "--- AU through the same host test ---"
+          "$HT" "/Library/Audio/Plug-Ins/Components/$NAME.component" --golden golden.json 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/hosttest-au.txt"
+          echo "--- CPU with JavaScriptCore JIT disabled (worst case: hosts without the JIT entitlement) ---"
+          JSC_useJIT=false "$HT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" 2>&1 | grep -E "render cost|PASS|FAIL" | tee "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt"
+          grep "render cost" "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt" "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt"
+      - name: Which hosts allow in-process JIT? (informational)
+        run: |
+          for app in "/Applications/Logic Pro.app" "/Applications/GarageBand.app" "/Applications/Cubase 14.app" "/Applications/Cubase 13.app"; do
+            [ -d "$app" ] && { echo "$app:"; codesign -d --entitlements :- "$app" 2>/dev/null | grep -i -A1 "jit\|unsigned-executable" || echo "  (no JIT entitlement found)"; }
+          done || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.slug }}-test-logs
+          path: testlogs/
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.slug }}-macOS
+          path: plugins/${{ matrix.slug }}/build/${{ steps.id.outputs.target }}_artefacts/Release/out/*
+          if-no-files-found: error
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.id.outputs.name }}
+          TARGET: ${{ steps.id.outputs.target }}
+        run: |
+          TAG="${{ matrix.slug }}-build-${{ github.run_number }}"
+          CPU=$(grep -h "render cost" testlogs/hosttest-vst3.txt | head -1 | sed 's/^ *//'); CPU2=$(grep -h "render cost" testlogs/hosttest-nojit.txt | head -1 | sed 's/^ *//')
+          BOUND=$(grep -m1 "two-way UI binding" plugins/${{ matrix.slug }}/REPORT.md || true)
+          gh release create "$TAG" plugins/${{ matrix.slug }}/build/${TARGET}_artefacts/Release/out/* --repo "${{ github.repository }}" \
+            --title "$NAME — macOS VST3 + AU (build ${{ github.run_number }})" \
+            --notes "$(printf 'Universal (Apple Silicon + Intel). Double-click **%s-Installer-VST3+AU.pkg** then rescan plugins in Logic / Cubase.\n\nTests on this build: installer, auval, pluginval strictness 10 (VST3 + AU), HostTest incl. golden master vs Node/V8, editor open with audio.\n\n%s\n\nCPU (HostTest, 48 kHz / 512): %s\nCPU with JIT disabled: %s\n\nSigning: %s' "$SAFE" "$BOUND" "$CPU" "$CPU2" "${PLUGIN_CODESIGN_IDENTITY:-ad-hoc (right-click > Open or allow in System Settings once if Gatekeeper complains)}")"

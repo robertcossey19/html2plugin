@@ -1,0 +1,17 @@
+{
+  "name": "html2plugin",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node tests/run-analogexact.js && node tests/shim-roundtrip.js && node tests/hostparam.js && node tests/ui-bridge.js",
+    "forge": "node forge/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "description": "Paste an HTML/Web Audio plugin page, get a tested macOS VST3 + AU",
+  "dependencies": {
+    "acorn": "^8.19.0",
+    "acorn-walk": "^8.3.5",
+    "jsdom": "^24.1.3"
+  }
+}

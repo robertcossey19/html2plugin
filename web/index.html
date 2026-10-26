@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>html2plugin — paste HTML, get VST3 + AU</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font: 15px/1.45 -apple-system, Inter, system-ui, sans-serif; background: #0f1115; color: #e6e6e6; }
+  main { max-width: 980px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; } p.sub { color: #9aa3b2; margin: 0 0 22px; }
+  label { display: block; font-size: 13px; color: #9aa3b2; margin: 14px 0 6px; }
+  input, textarea { width: 100%; box-sizing: border-box; background: #171a21; color: #e6e6e6; border: 1px solid #2a2f3a; border-radius: 8px; padding: 10px 12px; font: inherit; }
+  textarea { min-height: 260px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; white-space: pre; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  button { background: #3b82f6; color: white; border: 0; border-radius: 8px; padding: 11px 18px; font: inherit; font-weight: 600; cursor: pointer; margin-top: 16px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .card { background: #141821; border: 1px solid #262b36; border-radius: 10px; padding: 14px 16px; margin-top: 18px; }
+  .ok { color: #4ade80; } .bad { color: #f87171; } .mut { color: #9aa3b2; }
+  pre { white-space: pre-wrap; font-size: 12.5px; margin: 8px 0 0; color: #cbd5e1; }
+  a { color: #93c5fd; }
+  .step { display: flex; gap: 10px; align-items: baseline; margin: 6px 0; } .dot { width: 9px; height: 9px; border-radius: 50%; background: #334155; flex: none; } .dot.run { background: #fbbf24; } .dot.ok { background: #4ade80; } .dot.bad { background: #f87171; }
+  small { color: #9aa3b2; }
+</style>
+</head>
+<body>
+<main>
+  <h1>html2plugin</h1>
+  <p class="sub">Paste a Web Audio / AudioWorklet plugin page. Your repo's forge builds, tests and publishes a universal macOS VST3 (Cubase) + AU (Logic) installer. The page's own DSP and UI run unchanged inside the plugin.</p>
+
+  <div class="row">
+    <div><label>GitHub repository (owner/name)</label><input id="repo" placeholder="robertcossey19/html2plugin"></div>
+    <div><label>Fine-grained token <small>(this repo only: Contents read/write, Actions read, Workflows read/write; stored in this browser only)</small></label><input id="token" type="password" placeholder="github_pat_…"></div>
+  </div>
+  <div class="row">
+    <div><label>Plugin slug <small>(file name in inbox/, letters-digits-hyphens)</small></label><input id="slug" placeholder="my-tape-machine"></div>
+    <div><label>Source URL <small>(optional: a CodePen or any URL; the HTML is fetched by the workflow if the paste box is empty)</small></label><input id="url" placeholder="https://codepen.io/you/pen/abc"></div>
+  </div>
+  <label>Plugin HTML (the whole page, including the worklet code)</label>
+  <textarea id="html" placeholder="<!doctype html> …"></textarea>
+  <div id="precheck" class="mut" style="margin-top:8px"></div>
+  <button id="go">Build on GitHub</button>
+
+  <div id="status" class="card" style="display:none">
+    <div class="step"><span class="dot" id="d1"></span><span>Commit <code id="path"></code></span></div>
+    <div class="step"><span class="dot" id="d2"></span><span>Forge (headless boot, worklet capture, control probing, golden master)</span></div>
+    <div class="step"><span class="dot" id="d3"></span><span>macOS build + auval + pluginval 10 + HostTest + CPU</span></div>
+    <div class="step"><span class="dot" id="d4"></span><span>Release</span></div>
+    <pre id="log"></pre>
+    <div id="assets"></div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+for (const k of ['repo', 'token', 'slug']) { $(k).value = localStorage.getItem('h2p_' + k) || ''; $(k).addEventListener('input', () => localStorage.setItem('h2p_' + k, $(k).value)); }
+const log = (m, cls) => { const p = $('log'); p.innerHTML += (cls ? `<span class="${cls}">` : '') + m.replace(/</g, '&lt;') + (cls ? '</span>' : '') + '\n'; };
+const dot = (n, s) => { $('d' + n).className = 'dot ' + (s || ''); };
+
+// quick client-side sanity check so obvious misses are caught before a 25-minute build
+$('html').addEventListener('input', () => {
+  const h = $('html').value; const notes = [];
+  if (!h.trim()) { $('precheck').textContent = ''; return; }
+  if (!/registerProcessor\s*\(/.test(h)) notes.push('no registerProcessor( found — the AudioWorklet module must be inline in the page (template literal, Blob or <script type="worklet">)');
+  if (!/addModule\s*\(/.test(h)) notes.push('no audioWorklet.addModule( call found');
+  if (/createScriptProcessor\s*\(/.test(h)) notes.push('uses ScriptProcessorNode — not supported in the plugin; port the processing to an AudioWorkletProcessor first');
+  const m = h.match(/<script\b[^>]*src=["'](https?:[^"']+)["']/gi) || [];
+  if (m.length) notes.push(`${m.length} external script(s) will be inlined at build time: ${m.map(x => x.match(/src=["']([^"']+)/)[1]).join(', ')}`);
+  const desc = (h.match(/parameterDescriptors[\s\S]*?\]\s*;?\s*\}/) || [''])[0]; const n = (desc.match(/name\s*:/g) || []).length;
+  if (n) notes.push(`${n} parameterDescriptors found`);
+  $('precheck').innerHTML = notes.map(x => '• ' + x.replace(/</g, '&lt;')).join('<br>');
+  if (!$('slug').value) { const t = (h.match(/<title>([^<]*)<\/title>/i) || [])[1]; if (t) { $('slug').value = t.split(/[—|–-]/)[0].trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); } }
+});
+
+async function gh(path, opts = {}) {
+  const r = await fetch('https://api.github.com' + path, Object.assign({ headers: { Authorization: 'Bearer ' + $('token').value.trim(), Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } }, opts));
+  if (!r.ok) throw new Error(path + ' -> ' + r.status + ' ' + (await r.text()).slice(0, 200));
+  return r.status === 204 ? null : r.json();
+}
+const b64 = s => btoa(unescape(encodeURIComponent(s)));
+
+$('go').onclick = async () => {
+  const repo = $('repo').value.trim(), slug = $('slug').value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, ''); let html = $('html').value;
+  if (!repo || !$('token').value || !slug) return alert('repo, token and slug are required');
+  if (!html.trim() && !$('url').value.trim()) return alert('paste the HTML or give a source URL');
+  $('status').style.display = 'block'; $('log').textContent = ''; $('assets').innerHTML = ''; $('go').disabled = true;
+  try {
+    const path = html.trim() ? `inbox/${slug}.html` : `inbox/${slug}.url`;
+    if (!html.trim()) html = $('url').value.trim() + '\n';
+    $('path').textContent = path; dot(1, 'run');
+    let sha; try { const cur = await gh(`/repos/${repo}/contents/${path}`); sha = cur.sha; } catch (e) { }
+    const commit = await gh(`/repos/${repo}/contents/${path}`, { method: 'PUT', body: JSON.stringify({ message: `forge: ${slug}`, content: b64(html), sha }) });
+    const commitSha = commit.commit.sha; dot(1, 'ok'); log(`committed ${commitSha.slice(0, 7)}`);
+    dot(2, 'run'); let run = null;
+    for (let i = 0; i < 40 && !run; i++) { await new Promise(r => setTimeout(r, 4000)); const rs = await gh(`/repos/${repo}/actions/runs?head_sha=${commitSha}&per_page=5`); run = (rs.workflow_runs || [])[0]; }
+    if (!run) throw new Error('workflow did not start (is .github/workflows/forge.yml on the default branch and are Actions enabled?)');
+    log(`run #${run.run_number}: ${run.html_url}`);
+    let done = false, lastStatus = '';
+    while (!done) {
+      await new Promise(r => setTimeout(r, 15000));
+      const r = await gh(`/repos/${repo}/actions/runs/${run.id}`); const jobs = await gh(`/repos/${repo}/actions/runs/${run.id}/jobs`);
+      const forge = (jobs.jobs || []).find(j => j.name === 'forge'), mac = (jobs.jobs || []).find(j => j.name.startsWith('mac'));
+      if (forge) dot(2, forge.status === 'completed' ? (forge.conclusion === 'success' ? 'ok' : 'bad') : 'run');
+      if (mac) { dot(3, mac.status === 'completed' ? (mac.conclusion === 'success' ? 'ok' : 'bad') : 'run'); const step = (mac.steps || []).find(s => s.status === 'in_progress'); const st = step ? `mac: ${step.name}` : `mac: ${mac.status}`; if (st !== lastStatus) { lastStatus = st; log(st, 'mut'); } }
+      if (r.status === 'completed') { done = true; if (r.conclusion !== 'success') { dot(4, 'bad'); log(`run finished: ${r.conclusion}. Open the run for logs (the ${slug}-test-logs artifact has auval/pluginval/HostTest output).`, 'bad'); } }
+    }
+    const rel = await gh(`/repos/${repo}/releases?per_page=20`); const mine = (rel || []).find(x => x.tag_name === `${slug}-build-${run.run_number}`);
+    if (mine) { dot(4, 'ok'); log('release: ' + mine.html_url, 'ok'); $('assets').innerHTML = '<p><b>Downloads</b></p>' + mine.assets.map(a => `<div>• <a href="${a.browser_download_url}">${a.name}</a> <small>${(a.size / 1048576).toFixed(1)} MB</small></div>`).join('') + `<pre class="mut">${(mine.body || '').replace(/</g, '&lt;')}</pre>`; }
+  } catch (e) { log(String(e.message || e), 'bad'); }
+  $('go').disabled = false;
+};
+</script>
+</body>
+</html>

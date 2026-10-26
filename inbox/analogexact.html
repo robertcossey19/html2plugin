@@ -1,0 +1,1936 @@
+<!-- Paste EVERYTHING into CodePen's HTML panel. Leave CSS + JS panels empty. -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script id="codepen-helper" src="https://public.codepenassets.com/preview/index.aaeb6bbf8d3cfde3a6a4e0406274de.js"></script>
+<meta property="og:description" content="INPUT monitor = true hard bypass (unity, completely dry) • Standard Saturation">
+<meta property="og:image" content="https://c-54621713820261028-01a1703a-69ac-737b-98e6-c4fc6d8c9dbf.codepen.dev/.codepen/screenshots/b7b9556cf72f9ca5f4840fe06061cf7a61f58565f5785970a2984e33625466c9/1280.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="https://public.codepenassets.com/favicon/favicon.ico">
+
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>ANALOGEXACT — Jiles-Atherton Hysteresis</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<style>
+  html,body{height:100%;background:#1a202c}
+  body{font-family:'Inter',sans-serif;color:#e5e7eb}
+  .metal-panel{background:linear-gradient(145deg,#4a5568,#3a4454);border:1px solid #718096;border-top-color:#a0aec0}
+  .module-bg{background:rgba(0,0,0,.2);border:1px solid rgba(0,0,0,.4);box-shadow:inset 0 2px 6px rgba(0,0,0,.4)}
+  .knob{position:relative;width:80px;height:80px;border-radius:50%;background:linear-gradient(145deg,#5a6578,#2d3748);border:2px solid #1a202c;box-shadow:0 5px 10px rgba(0,0,0,.5),inset 0 2px 3px rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;touch-action:none}
+  .knob-ind{position:absolute;width:4px;height:12px;background:#e2e8f0;top:6px;border-radius:2px;transform-origin:center 34px;box-shadow:0 0 3px rgba(255,255,255,.5)}
+  .vu-housing{background:#111827;border:4px solid #4b5563;border-radius:10px;padding:12px;box-shadow:inset 0 0 20px rgba(0,0,0,.8)}
+  .vu-scale{position:relative;width:100%;height:60px;background:#ffebcd;border-radius:4px;overflow:hidden}
+  .vu-needle{position:absolute;width:2px;height:100%;background:#dc2626;bottom:0;left:50%;transform-origin:bottom center;transition:transform .04s linear;box-shadow:0 0 5px #dc2626}
+  .vu-dim{opacity:.35; filter:grayscale(.3)}
+  .switch-group button.active{background:#f6ad55;color:#1a202c;font-weight:700;box-shadow:inset 0 2px 4px rgba(0,0,0,.4)}
+  #tech-panel{transition:max-height .5s ease, opacity .4s ease, transform .4s ease; transform:scaleY(.98)}
+  #tech-panel.open{transform:scaleY(1)}
+  .collapsible{transition:max-height .35s ease, opacity .25s ease, transform .25s ease; overflow:hidden}
+  .collapsible.hidden-state{max-height:0;opacity:0;transform:translateY(-4px);pointer-events:none}
+  .toggle-switch{display:inline-block;width:50px;height:26px;background:#4a5568;border-radius:13px;cursor:pointer;position:relative;border:1px solid #1a202c}
+  .toggle-switch.active{background:#f6ad55}
+  .toggle-switch.vibe-active{background:linear-gradient(90deg,#8b5cf6,#ec4899);box-shadow:0 0 12px rgba(139,92,246,0.5)}
+  .toggle-switch-handle{position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.4);transition:transform .2s}
+  .toggle-switch.active .toggle-switch-handle,.toggle-switch.vibe-active .toggle-switch-handle{transform:translateX(24px)}
+  .dl-btn{background:#f59e0b;color:#1f1301;border:1px solid #7c4a00}
+  .headroom-slider{-webkit-appearance:none;appearance:none;width:100%;height:6px;background:linear-gradient(to right,#374151 0%,#f6ad55 50%,#ef4444 100%);border-radius:3px;outline:none;cursor:pointer}
+  .headroom-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;background:#e2e8f0;border-radius:50%;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,.4);border:2px solid #1a202c}
+  .headroom-slider::-moz-range-thumb{width:16px;height:16px;background:#e2e8f0;border-radius:50%;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,.4);border:2px solid #1a202c}
+  .vibe-label{background:linear-gradient(90deg,#8b5cf6,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-weight:800}
+  .lamp{width:10px;height:10px;border-radius:50%;background:#374151;box-shadow:inset 0 0 3px rgba(0,0,0,.8)}
+  .lamp.on.purple{background:#a78bfa;box-shadow:0 0 8px #a78bfa}
+</style>
+</head>
+
+<body class="flex items-center justify-center min-h-screen p-3">
+  <div class="metal-panel rounded-2xl p-4 md:p-6 w-full max-w-6xl space-y-4">
+    <div class="flex justify-between items-center pb-3 border-b border-black/30">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-bold text-white tracking-wider">ANALOGEXACT</h1>
+        <p class="text-sm text-gray-400">
+          INPUT monitor = true hard bypass (unity, completely dry) •
+          <span id="dsp-mode-label">Standard Saturation</span>
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <div id="lamp-vibe" class="lamp"></div>
+        <button id="btn-export" class="dl-btn font-bold py-2 px-3 rounded-lg shadow disabled:opacity-50" disabled>Export (disabled)</button>
+        <button id="power" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg border-b-4 border-gray-800 active:border-b-2 transition-all">POWER</button>
+      </div>
+    </div>
+
+    <!-- VU METERS -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div id="vuLwrap" class="vu-housing">
+        <div class="flex items-center justify-between text-xs text-gray-700 mb-1">
+          <span id="vuLabelL" class="text-gray-300">VU - L</span><span class="text-gray-500">-20  -10   0   +3  +5</span>
+        </div>
+        <div class="vu-scale"><div id="vuL" class="vu-needle" style="transform:rotate(-70deg)"></div></div>
+      </div>
+      <div id="vuRwrap" class="vu-housing">
+        <div class="flex items-center justify-between text-xs text-gray-700 mb-1">
+          <span id="vuLabelR" class="text-gray-300">VU - R</span><span class="text-gray-500">-20  -10   0   +3  +5</span>
+        </div>
+        <div class="vu-scale"><div id="vuR" class="vu-needle" style="transform:rotate(-70deg)"></div></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="module-bg p-4 rounded-lg space-y-3 flex flex-col items-center">
+        <h2 class="text-lg font-bold">INPUT LEVEL</h2>
+        <div class="knob" id="knob-in"><div class="knob-ind"></div></div>
+        <span id="val-in" class="font-mono text-sm text-yellow-300">0.0 dB</span>
+        <p class="text-[10px] text-gray-400 mt-[-4px]">
+          Input knob is the dry input signal (drive into record path only; no effect in INPUT monitor).
+        </p>
+      </div>
+
+      <div class="module-bg p-4 rounded-lg space-y-3 flex flex-col items-center">
+        <h2 class="text-lg font-bold">OUTPUT LEVEL</h2>
+        <div class="knob" id="knob-out"><div class="knob-ind"></div></div>
+        <span id="val-out" class="font-mono text-sm text-yellow-300">0.0 dB</span>
+
+        <div class="w-full mt-2 pt-3 border-t border-gray-600">
+          <div class="flex justify-between items-center mb-1">
+            <label class="text-xs font-semibold text-gray-300">HEADROOM</label>
+            <span id="val-headroom" class="font-mono text-xs text-yellow-300">0.0 dB</span>
+          </div>
+          <input type="range" id="slider-headroom" class="headroom-slider" min="-12" max="12" step="0.5" value="0">
+          <div class="flex justify-between text-[9px] text-gray-500 mt-1">
+            <span>−12</span><span>0</span><span>+12</span>
+          </div>
+
+          <div class="w-full mt-3 pt-3 border-t border-gray-600">
+            <div class="flex justify-between items-center mb-1">
+              <label class="text-xs font-semibold text-gray-300">POST LEVEL</label>
+              <span id="val-post" class="font-mono text-xs text-yellow-300">0.0 dB</span>
+            </div>
+            <input type="range" id="slider-post" class="headroom-slider" min="-12" max="12" step="0.5" value="0">
+            <div class="flex justify-between text-[9px] text-gray-500 mt-1">
+              <span>−12</span><span>0</span><span>+12</span>
+            </div>
+            <p class="text-[10px] text-gray-400 text-center mt-2">
+              Post-chain trim (after FFT match-EQ). Does not change tape drive / DSP behavior.
+            </p>
+          </div>
+
+          <div class="w-full mt-3 pt-3 border-t border-gray-600">
+            <div class="flex justify-between items-center mb-1">
+              <label class="text-xs font-semibold text-gray-300">MIX</label>
+              <span id="val-mix" class="font-mono text-xs text-yellow-300">100%</span>
+            </div>
+            <input type="range" id="slider-mix" class="headroom-slider" min="0" max="100" step="1" value="100">
+            <div class="flex justify-between text-[9px] text-gray-500 mt-1">
+              <span>DRY</span><span>50%</span><span>WET</span>
+            </div>
+            <p class="text-[10px] text-gray-400 text-center mt-2">
+              Crossfades the whole processed tape path into the output (does not change tape drive).
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="module-bg p-4 rounded-lg space-y-3 flex flex-col items-center">
+        <h2 class="text-lg font-bold mb-2">MONITOR</h2>
+        <div id="monitor" class="switch-group flex rounded-md bg-gray-900 p-1 w-full">
+          <button data-monitor="input" class="flex-1 py-2 rounded text-sm font-medium">INPUT</button>
+          <button data-monitor="repro" class="flex-1 py-2 rounded text-sm font-medium active">REPRO</button>
+        </div>
+        <p class="text-[10px] text-gray-400 text-center">
+          This CodePen uses your microphone as the source (browser permission required).
+        </p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="module-bg p-4 rounded-lg space-y-3 flex flex-col items-center">
+        <h2 class="text-lg font-bold mb-2">HEADBLOCK</h2>
+        <div id="headblock" class="switch-group flex rounded-md bg-gray-900 p-1 w-full">
+          <button data-headblock="stereo" class="flex-1 py-2 rounded text-sm font-medium active">STEREO 2-TRK</button>
+          <button data-headblock="mono"   class="flex-1 py-2 rounded text-sm font-medium">FULL-TRACK MONO</button>
+        </div>
+        <p id="headblock-note" class="text-[11px] text-gray-400 text-center">Stereo 2-track headblock active.</p>
+      </div>
+      <div class="module-bg p-4 rounded-lg space-y-3 flex flex-col items-center">
+        <h2 class="text-lg font-bold mb-2">TAPE HISS</h2>
+        <div id="tapehiss" class="switch-group flex rounded-md bg-gray-900 p-1 w-full">
+          <button data-tapehiss="off" class="flex-1 py-2 rounded text-sm font-medium active">OFF</button>
+          <button data-tapehiss="on"  class="flex-1 py-2 rounded text-sm font-medium">ON</button>
+        </div>
+        <p id="tapehiss-note" class="text-[11px] text-gray-400 text-center">Shaped noise floor (rises +3dB/oct toward HF).</p>
+      </div>
+      <div class="module-bg p-4 rounded-lg space-y-3 flex flex-col items-center">
+        <h2 class="text-lg font-bold mb-2">WOW &amp; FLUTTER</h2>
+        <div id="wowflutter" class="switch-group flex rounded-md bg-gray-900 p-1 w-full">
+          <button data-wowflutter="off" class="flex-1 py-2 rounded text-sm font-medium active">OFF</button>
+          <button data-wowflutter="on"  class="flex-1 py-2 rounded text-sm font-medium">ON</button>
+        </div>
+        <p id="wowflutter-note" class="text-[11px] text-gray-400 text-center">Pitch modulation from transport mechanics.</p>
+      </div>
+    </div>
+
+    <div class="text-center pt-1">
+      <button id="toggle-tech" class="text-yellow-400 hover:text-yellow-300 font-semibold text-sm">Technician's Setup Panel ▼</button>
+    </div>
+
+    <div id="tech-panel" class="max-h-0 opacity-0 overflow-hidden module-bg p-4 rounded-lg space-y-6">
+      <h3 class="text-center font-bold text-lg text-yellow-400">INTERNAL CALIBRATION & TAPE FORMULA</h3>
+
+      <div class="bg-gray-800/50 border border-purple-500/30 rounded-lg p-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h4 class="vibe-label text-xl">VIBE</h4>
+            <p class="text-xs text-gray-400 mt-1">Enhanced tape character • Tape-specific harmonic profile</p>
+            <p id="vibe-tape-params" class="text-[10px] text-purple-300 mt-1">Tape: 456 • k=25.5kA/m • c=0.17 • Ms=350kA/m</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <div id="vibe-toggle" class="toggle-switch"><div class="toggle-switch-handle"></div></div>
+            <span id="vibe-status" class="text-sm font-semibold text-gray-400">OFF</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-gray-800/50 border border-cyan-500/30 rounded-lg p-4">
+        <div class="flex items-center gap-6">
+          <div class="flex-1">
+            <h4 class="text-lg font-bold text-cyan-400">PRESERVE CHARACTER</h4>
+            <p class="text-xs text-gray-400 mt-1">True per-FFT-bin match EQ: pushes WET spectrum toward DRY spectrum</p>
+            <p id="preserve-char-status" class="text-[10px] text-cyan-300 mt-1">FFT match-EQ: 0% = off</p>
+          </div>
+          <div class="flex flex-col items-center gap-1">
+            <div class="knob mx-auto" id="knob-preserve" style="width:55px;height:55px;"><div class="knob-ind" style="transform-origin:center 22px;"></div></div>
+            <span id="val-preserve" class="font-mono text-xs text-cyan-300">0%</span>
+          </div>
+          <div class="w-24 h-12 bg-gray-900 rounded border border-gray-700 overflow-hidden relative">
+            <canvas id="preserve-canvas" width="96" height="48" class="w-full h-full"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-y-4 text-center border-b border-gray-600 pb-4">
+        <div class="space-y-2">
+          <label class="font-semibold block">BIAS ADJUST</label>
+          <p class="text-xs text-gray-400">Main audio PWA</p>
+          <div class="knob mx-auto mt-2" id="knob-bias" style="width:60px;height:60px;"><div class="knob-ind" style="transform-origin:center 25px;"></div></div>
+          <span id="val-bias" class="font-mono text-xs">+0.0 dB</span>
+        </div>
+        <div class="space-y-2 flex flex-col justify-center pt-8">
+          <label class="font-semibold block">XFORMER I/O</label>
+          <p class="text-xs text-gray-400">I/O Module Jumper</p>
+          <div class="flex justify-center mt-auto mb-auto pt-2">
+            <div id="transformer" class="toggle-switch active"><div class="toggle-switch-handle"></div></div>
+          </div>
+        </div>
+        <div class="space-y-2 flex flex-col justify-center pt-8">
+          <div class="flex items-center justify-between mb-2">
+            <label class="font-semibold block">EQ STANDARD</label>
+            <button id="eq-legend-toggle" class="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-white">Learn More</button>
+          </div>
+          <div id="eq" class="switch-group flex rounded-md bg-gray-900 p-1 mx-auto">
+            <button data-eq="NAB" class="flex-1 py-1 rounded text-xs font-medium active">NAB</button>
+            <button data-eq="IEC" class="flex-1 py-1 rounded text-xs font-medium">IEC/CCIR</button>
+          </div>
+          <div id="eq-legend" class="collapsible hidden-state mt-3 text-left bg-gray-800/70 border border-gray-700 rounded-lg p-3 space-y-3">
+            <p class="text-sm font-semibold text-yellow-300">How EQ standard changes tone with speed.</p>
+            <div class="space-y-2 text-sm">
+              <div><h4 class="font-bold text-white">7.5 ips</h4><p><b>NAB:</b> more LF bump, softer top. <b>IEC:</b> tighter LF, clearer top.</p></div>
+              <div><h4 class="font-bold text-white">15 ips</h4><p><b>NAB:</b> balanced & smooth. <b>IEC:</b> punchier, slightly brighter.</p></div>
+              <div><h4 class="font-bold text-white">30 ips</h4><p><b>IEC:</b> most linear, smallest head-bump. <b>NAB:</b> a bit more LF body.</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+        <div>
+          <label class="font-semibold mb-2 block">SPEED (IPS)</label>
+          <div id="speed" class="switch-group flex rounded-md bg-gray-900 p-1">
+            <button data-speed="7.5" class="flex-1 py-1 rounded text-sm font-medium">7.5</button>
+            <button data-speed="15"  class="flex-1 py-1 rounded text-sm font-medium active">15</button>
+            <button data-speed="30"  class="flex-1 py-1 rounded text-sm font-medium">30</button>
+          </div>
+        </div>
+        <div>
+          <label class="font-semibold mb-2 block">FLUXIVITY (nWb/m)</label>
+          <div id="flux" class="switch-group grid grid-cols-4 gap-1 bg-gray-900 p-1 rounded-md">
+            <button data-flux="185" class="py-1 rounded text-xs font-medium">185</button>
+            <button data-flux="250" class="py-1 rounded text-xs font-medium active">250</button>
+            <button data-flux="370" class="py-1 rounded text-xs font-medium">370</button>
+            <button data-flux="500" class="py-1 rounded text-xs font-medium">500</button>
+          </div>
+          <p id="flux-note" class="text-[10px] text-gray-400 mt-1 text-center">Operating level: +2.6 dB over 185</p>
+        </div>
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <label class="font-semibold block">TAPE TYPE</label>
+            <button id="tape-legend-toggle" class="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-white">Learn More</button>
+          </div>
+          <div id="tape" class="switch-group grid grid-cols-3 gap-1 bg-gray-900 p-1 rounded-md">
+            <button data-tapetype="406"  class="py-1 rounded text-xs font-medium">406</button>
+            <button data-tapetype="456"  class="py-1 rounded text-xs font-medium active">456</button>
+            <button data-tapetype="499"  class="py-1 rounded text-xs font-medium">499</button>
+            <button data-tapetype="GP9"  class="py-1 rounded text-xs font-medium">GP9</button>
+            <button data-tapetype="SM900" class="py-1 rounded text-xs font-medium">SM900</button>
+            <button data-tapetype="SM911" class="py-1 rounded text-xs font-medium">SM911</button>
+          </div>
+
+          <div id="tape-legend" class="collapsible hidden-state mt-3 text-left bg-gray-800/70 border border-gray-700 rounded-lg p-3 text-sm">
+            <div id="tape-legend-static">
+              <p class="mb-2"><b>Tape output class & optimal fluxivity:</b></p>
+              <p><b>406:</b> +3 tape (250 nWb/m) • 330 Oe • MOL +9dB</p>
+              <p><b>456:</b> +6 tape (370 nWb/m) • 320 Oe • MOL +12.3dB</p>
+              <p><b>499:</b> +9 tape (500 nWb/m) • 390 Oe • MOL +17.4dB</p>
+              <p><b>GP9:</b> +9 tape (500 nWb/m) • 370 Oe • MOL +17.5dB • lowest THD</p>
+              <p><b>SM900:</b> +9 tape (500 nWb/m) • 370 Oe • MOL +18.8dB • max headroom</p>
+              <p><b>SM911:</b> +6 tape (370 nWb/m) • 320 Oe • MOL +17.3dB</p>
+              <p class="mt-2 text-gray-400 text-xs">Higher fluxivity = better S/N but less headroom. Match tape class to fluxivity for optimal results.</p>
+            </div>
+            <div id="tape-legend-vibe" class="hidden space-y-2">
+              <p class="mb-1 text-purple-300"><b>VIBE Hysteresis Character:</b></p>
+              <p><b>406:</b> Warmest. Early soft saturation, rounded transients, vintage "pillow" compression.</p>
+              <p><b>456:</b> Reference. Balanced warmth, classic "tape sound" - warm but defined.</p>
+              <p><b>499:</b> Crisp. Most headroom, sharp transient attack, tight punchy bass.</p>
+              <p><b>GP9:</b> Ultra-clean. Sharpest transients, most transparent, mastering-grade.</p>
+              <p><b>SM900:</b> Transparent. Strong bass, open top end, European character.</p>
+              <p><b>SM911:</b> Smooth. Cleaner than 456 in low-mids, less "bulbous" bottom.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center border-t border-gray-700 pt-4">
+        <div class="flex items-center justify-center gap-3">
+          <div id="autocal" class="toggle-switch active"><div class="toggle-switch-handle"></div></div>
+          <span class="text-sm font-semibold">AUTO CAL</span>
+        </div>
+        <div class="col-span-2 flex items-center justify-center">
+          <button id="cal-now" class="px-4 py-2 rounded-md bg-yellow-500 text-black font-semibold shadow">CAL NOW</button>
+        </div>
+        <div class="col-span-3">
+          <p id="cal-rationale" class="text-xs text-gray-300 bg-gray-800/60 border border-gray-700 rounded-md p-2"></p>
+        </div>
+      </div>
+    </div>
+
+    <div id="msg" class="hidden text-center bg-blue-900/50 border border-blue-700 p-3 rounded-lg text-sm"></div>
+  </div>
+
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+const on=(el,ev,fn,opts)=>{ try{ if(el) el.addEventListener(ev,fn,opts); }catch{} };
+
+function showMsg(t){
+  const msgEl=$('msg');
+  if(!msgEl) return;
+  msgEl.textContent=t;
+  msgEl.classList.remove('hidden');
+  clearTimeout(showMsg._t);
+  showMsg._t=setTimeout(()=>msgEl.classList.add('hidden'),2600);
+}
+function safe(n,fallback=0){ const v=Number(n); return Number.isFinite(v)?v:fallback; }
+function db2gain(db){
+  const d = Math.max(-60, Math.min(24, Number(db)||0));
+  return Math.pow(10, d/20);
+}
+function mixGains01(mix01){
+  const x=Math.max(0,Math.min(1,Number(mix01)||0));
+  return { dry: Math.cos(x*Math.PI*0.5), wet: Math.sin(x*Math.PI*0.5) };
+}
+
+const PRESERVE_LATENCY_SAMPLES = 2048; // FIX: measured OLA latency = ring length R = N*4 = 2048
+
+const powerBtn=$('power');
+const btnExport=$('btn-export');
+const lampVibe=$('lamp-vibe');
+const vuL=$('vuL'), vuR=$('vuR');
+const vuRwrap=$('vuRwrap'), vuLabelR=$('vuLabelR');
+
+const toggleTech=$('toggle-tech'), techPanel=$('tech-panel');
+const eqLegendBtn=$('eq-legend-toggle'), eqLegend=$('eq-legend');
+const tapeLegendBtn=$('tape-legend-toggle'), tapeLegend=$('tape-legend');
+
+const transformer=$('transformer');
+const calToggle=$('autocal'), calNowBtn=$('cal-now'), calRationale=$('cal-rationale');
+const headblockNote=$('headblock-note');
+const tapehissSwitch=$('tapehiss'), tapehissNote=$('tapehiss-note');
+const wowflutterSwitch=$('wowflutter'), wowflutterNote=$('wowflutter-note');
+
+const sliderHeadroom=$('slider-headroom'), valHeadroom=$('val-headroom');
+const sliderPost=$('slider-post'), valPost=$('val-post');
+const sliderMix=$('slider-mix'), valMix=$('val-mix');
+
+const vibeToggle=$('vibe-toggle'), vibeStatus=$('vibe-status'), vibeTapeParams=$('vibe-tape-params');
+const dspModeLabel=$('dsp-mode-label');
+const knobPreserve=$('knob-preserve'), valPreserve=$('val-preserve'), preserveCharStatus=$('preserve-char-status');
+const preserveCanvas=$('preserve-canvas');
+
+let audioCtx=null, isOn=false, rafVU=null;
+let g=null, isProcessing=false;
+let micStream=null, micSource=null;
+
+let xfTrimTarget=1.0;
+
+const state={
+  inDb:0, outDb:0, monitor:'repro', speed:15, flux:250, eq:'NAB', bias:0,
+  transformer:true, autoCal:true, tapeType:'456', headroomDb:0,
+  headblock:'stereo',
+  tapeHiss:false,
+  wowFlutter:false,
+  vibeEnabled:false,
+  preserveAmount:0,
+  postDb:0,
+  mix01:1.0
+};
+
+function setChannelDisplay(monoOn){
+  if(vuRwrap) vuRwrap.classList.toggle('vu-dim', monoOn);
+  if(vuLabelR) vuLabelR.textContent = monoOn ? 'VU - R (mono)' : 'VU - R';
+}
+
+/* ===== preserve spectrum mini UI ===== */
+let pcCtx=null;
+function drawPreserveSpectrumFromCurve(curveDb, amount){
+  if(!pcCtx) return;
+  const w=96,h=48;
+  pcCtx.fillStyle='#0b1220';
+  pcCtx.fillRect(0,0,w,h);
+  pcCtx.strokeStyle='rgba(255,255,255,0.10)';
+  pcCtx.beginPath(); pcCtx.moveTo(0,h/2); pcCtx.lineTo(w,h/2); pcCtx.stroke();
+  const N=(curveDb&&curveDb.length)?curveDb.length:0;
+  if(N>1){
+    pcCtx.strokeStyle='rgba(0,220,220,0.95)';
+    pcCtx.beginPath();
+    for(let i=0;i<N;i++){
+      const db=curveDb[i];
+      const x=(i/(N-1))*(w-1);
+      const y=h/2 - db*1.15;
+      if(i===0) pcCtx.moveTo(x,y); else pcCtx.lineTo(x,y);
+    }
+    pcCtx.stroke();
+  }
+  pcCtx.fillStyle='rgba(0,255,255,0.8)';
+  pcCtx.fillRect(0,h-2,w*amount,2);
+}
+function initPreserveUI(){
+  if (preserveCanvas) pcCtx = preserveCanvas.getContext('2d');
+  if(preserveCharStatus) preserveCharStatus.textContent = 'FFT match-EQ: 0% = off';
+  drawPreserveSpectrumFromCurve([], 0);
+}
+
+/* ===== tables ===== */
+const tapeHysteresisParams = {
+  "406": { Ms: 330000, a: 24000, k: 26260, c: 0.22, alpha: 0.0018 },
+  "456": { Ms: 350000, a: 22000, k: 25465, c: 0.17, alpha: 0.0016 },
+  "499": { Ms: 400000, a: 19000, k: 31035, c: 0.12, alpha: 0.0014 },
+  "GP9": { Ms: 420000, a: 20000, k: 29443, c: 0.10, alpha: 0.0012 },
+  "SM900": { Ms: 400000, a: 21000, k: 29443, c: 0.14, alpha: 0.0014 },
+  "SM911": { Ms: 360000, a: 23000, k: 25465, c: 0.15, alpha: 0.0015 }
+};
+const calPresets={ "406":{flux:185,bias:+1.5}, "456":{flux:250,bias:+1.8}, "499":{flux:370,bias:+2.5}, "GP9":{flux:370,bias:+3.0}, "SM900":{flux:370,bias:+3.0}, "SM911":{flux:250,bias:+2.5} };
+const speedNoiseOffset = { 7.5:+6, 15:+3, 30:0 };
+const wowFlutterSpecs = {
+  7.5:{wowDepth:0.0008,flutterDepth:0.0003,wowRate:0.8,flutterRate:7.5},
+  15:{wowDepth:0.0005,flutterDepth:0.0002,wowRate:1.0,flutterRate:9.0},
+  30:{wowDepth:0.0003,flutterDepth:0.0001,wowRate:1.2,flutterRate:12.0}
+};
+const fluxivitySpecs = { 185:{dbOver185:0,label:"185 (0dB)"}, 250:{dbOver185:2.6,label:"250 (+3)"}, 370:{dbOver185:6.0,label:"370 (+6)"}, 500:{dbOver185:8.6,label:"500 (+9)"} };
+const tapeFluxivitySpecs = {
+  "406": { outputClass:3, molOver185:9.0,  inherentNoiseDb:-58,   designedFlux:250 },
+  "456": { outputClass:6, molOver185:12.3, inherentNoiseDb:-62,   designedFlux:370 },
+  "499": { outputClass:9, molOver185:17.4, inherentNoiseDb:-65,   designedFlux:500 },
+  "GP9": { outputClass:9, molOver185:17.5, inherentNoiseDb:-73,   designedFlux:500 },
+  "SM900":{ outputClass:9, molOver185:18.8, inherentNoiseDb:-62,   designedFlux:500 },
+  "SM911":{ outputClass:6, molOver185:17.3, inherentNoiseDb:-60.5, designedFlux:370 }
+};
+function calculateTapeFluxInteraction(tapeType, fluxivity) {
+  const tape = tapeFluxivitySpecs[tapeType] || tapeFluxivitySpecs['456'];
+  const flux = fluxivitySpecs[fluxivity] || fluxivitySpecs[250];
+  const effectiveNoiseDb = tape.inherentNoiseDb - flux.dbOver185;
+  const headroomDb = tape.molOver185 - flux.dbOver185;
+  const isOptimal = (fluxivity === tape.designedFlux);
+  const isCompatible = (flux.dbOver185 <= tape.outputClass + 1.5);
+  return { effectiveNoiseDb, headroomDb, isOptimal, isCompatible,
+    warning: headroomDb < 3 ? `Low headroom (${headroomDb.toFixed(1)} dB) - saturation likely` : null };
+}
+const eqForSpeed = s => (s>=30 ? 'IEC' : 'NAB');
+
+function updateHysteresisParams(){
+  if(!vibeTapeParams) return;
+  const params=tapeHysteresisParams[state.tapeType]||tapeHysteresisParams['456'];
+  vibeTapeParams.textContent=`Tape: ${state.tapeType} • k=${(params.k/1000).toFixed(1)}kA/m • c=${params.c.toFixed(2)} • Ms=${(params.Ms/1000).toFixed(0)}kA/m`;
+}
+function updateTapeLegend(){
+  const s=$('tape-legend-static'), v=$('tape-legend-vibe');
+  if(!s||!v) return;
+  if(state.vibeEnabled){ s.classList.add('hidden'); v.classList.remove('hidden'); }
+  else { s.classList.remove('hidden'); v.classList.add('hidden'); }
+}
+function updateDspModeLabel(){
+  if(!dspModeLabel) return;
+  if(state.monitor === 'input'){
+    dspModeLabel.textContent = 'Hard Bypass';
+  } else {
+    dspModeLabel.textContent = state.vibeEnabled ? 'Enhanced Tape Character' : 'Standard Saturation';
+  }
+}
+function setVibeEnabled(enabled){
+  if(vibeToggle) vibeToggle.classList.toggle('vibe-active', enabled);
+  if(vibeStatus){
+    vibeStatus.textContent = enabled ? 'ON' : 'OFF';
+    vibeStatus.classList.toggle('text-purple-400', enabled);
+    vibeStatus.classList.toggle('text-gray-400', !enabled);
+  }
+  if(lampVibe){
+    lampVibe.classList.toggle('on', enabled);
+    lampVibe.classList.toggle('purple', enabled);
+  }
+  updateDspModeLabel();
+}
+
+/* ============================================================
+   AudioWorklet loader
+   (FIXED: gain staging, bias frequency vs OS, preserve latency reduced,
+           and UI params delivered via postMessage so knobs ALWAYS affect DSP)
+   ============================================================ */
+let __awLoaded=false;
+async function ensureAnalogWorklet(ctx){
+  if(__awLoaded) return;
+  if(!ctx.audioWorklet || !window.AudioWorkletNode) throw new Error('AudioWorklet not supported.');
+
+  const code = `/* === AudioWorklet code === */
+const INPUT_DB_OFFSET=0; // FIX #1: no hidden -5dB attenuation before saturation
+const CROSSTALK_DB=-40;
+function clamp(v,a,b){return v<a?a:(v>b?b:v);}
+function db2gain(db){const d=Math.max(db,-60); return Math.pow(10,d/20);}
+
+class Biquad{
+  constructor(sr){this.sr=sr; this.b0=1;this.b1=0;this.b2=0;this.a1=0;this.a2=0; this.z1=0;this.z2=0;}
+  set(type,freq,Q,gainDb){
+    const sr=this.sr, f=clamp(freq,5,0.49*sr), w0=2*Math.PI*f/sr;
+    const c=Math.cos(w0), s=Math.sin(w0), q=Math.max(0.05,Q||0.707);
+    const A=Math.pow(10,(gainDb||0)/40), sqrtA=Math.sqrt(A);
+    let b0,b1,b2,a0,a1,a2;
+    if(type==='lowpass'){const alpha=s/(2*q); b0=(1-c)/2;b1=1-c;b2=(1-c)/2; a0=1+alpha;a1=-2*c;a2=1-alpha;}
+    else if(type==='highpass'){const alpha=s/(2*q); b0=(1+c)/2;b1=-(1+c);b2=(1+c)/2; a0=1+alpha;a1=-2*c;a2=1-alpha;}
+    else if(type==='peaking'){const alpha=s/(2*q); b0=1+alpha*A;b1=-2*c;b2=1-alpha*A; a0=1+alpha/A;a1=-2*c;a2=1-alpha/A;}
+    else if(type==='lowshelf'){
+      const S=1.0; const alpha=s/2*Math.sqrt(((A+1/A)*(1/S-1))+2);
+      b0=A*((A+1)-(A-1)*c+2*sqrtA*alpha);
+      b1=2*A*((A-1)-(A+1)*c);
+      b2=A*((A+1)-(A-1)*c-2*sqrtA*alpha);
+      a0=(A+1)+(A-1)*c+2*sqrtA*alpha;
+      a1=-2*((A-1)+(A+1)*c);
+      a2=(A+1)+(A-1)*c-2*sqrtA*alpha;
+    } else if(type==='highshelf'){
+      const S=1.0; const alpha=s/2*Math.sqrt(((A+1/A)*(1/S-1))+2);
+      b0=A*((A+1)+(A-1)*c+2*sqrtA*alpha);
+      b1=-2*A*((A-1)+(A+1)*c);
+      b2=A*((A+1)+(A-1)*c-2*sqrtA*alpha);
+      a0=(A+1)-(A-1)*c+2*sqrtA*alpha;
+      a1=2*((A-1)-(A+1)*c);
+      a2=(A+1)-(A-1)*c-2*sqrtA*alpha;
+    } else { b0=1;b1=0;b2=0;a0=1;a1=0;a2=0; }
+    const inv=1/a0;
+    this.b0=b0*inv; this.b1=b1*inv; this.b2=b2*inv; this.a1=a1*inv; this.a2=a2*inv;
+  }
+  process(x){
+    const y=this.b0*x + this.z1;
+    this.z1=this.b1*x - this.a1*y + this.z2;
+    this.z2=this.b2*x - this.a2*y;
+    return y;
+  }
+}
+
+class XorShift{constructor(seed){this.x=seed>>>0;if(!this.x)this.x=123456789;}
+  next(){let x=this.x; x^=x<<13; x>>>=0; x^=x>>17; x>>>=0; x^=x<<5; x>>>=0; this.x=x>>>0; return (x/2147483648)-1;}
+}
+
+class DelayLine{
+  constructor(sr,maxSec){this.sr=sr; this.len=Math.max(8,(maxSec*sr|0)+4); this.bufL=new Float32Array(this.len); this.bufR=new Float32Array(this.len); this.w=0;}
+  write(l,r){this.bufL[this.w]=l; this.bufR[this.w]=r; this.w=(this.w+1)%this.len;}
+  read(delaySamples){
+    const d=clamp(delaySamples,0,this.len-3);
+    let idx=this.w-d; while(idx<0) idx+=this.len;
+    const i0=idx|0, frac=idx-i0, i1=(i0+1)%this.len;
+    const l0=this.bufL[i0], l1=this.bufL[i1], r0=this.bufR[i0], r1=this.bufR[i1];
+    return [l0+(l1-l0)*frac, r0+(r1-r0)*frac];
+  }
+}
+
+class OS4{constructor(fn){this.fn=fn; this.pL=0; this.pR=0;}
+  processL(x){const p=this.pL, d=(x-p)*0.25; const y=0.25*(this.fn(p+d)+this.fn(p+2*d)+this.fn(p+3*d)+this.fn(x)); this.pL=x; return y;}
+  processR(x){const p=this.pR, d=(x-p)*0.25; const y=0.25*(this.fn(p+d)+this.fn(p+2*d)+this.fn(p+3*d)+this.fn(x)); this.pR=x; return y;}
+}
+
+/* === Jiles-Atherton + bias (FIXED bias frequency) === */
+function _langevin(x){
+  const ax = Math.abs(x);
+  if(ax < 1e-4){
+    const x2 = x*x;
+    return x*(1/3 - x2/45 + (2*x2*x2)/945);
+  }
+  return (1/Math.tanh(x)) - (1/x);
+}
+class JilesAthertonCore{
+  constructor(params){
+    this.setParams(params || { Ms:350000, a:22000, k:25465, c:0.17, alpha:0.0016 });
+    this.reset();
+  }
+  setParams(p){
+    this.Ms = Math.max(1, p.Ms||350000);
+    this.a  = Math.max(1e-9, p.a||22000);
+    this.k  = Math.max(1e-9, p.k||25465);
+    this.c  = clamp((p.c!=null)?p.c:0.17, 0, 1);
+    this.alpha = Math.max(0, (p.alpha!=null)?p.alpha:0.0016);
+  }
+  reset(){ this.M=0; this.Mirr=0; this.H=0; }
+  _Man(H, Mguess){
+    const He = H + this.alpha * Mguess;
+    const xi = He / this.a;
+    let Man = this.Ms * _langevin(xi);
+    return clamp(Man, -this.Ms, this.Ms);
+  }
+  initAtField(H){
+    this.H = H;
+    let M = 0;
+    for(let it=0; it<4; it++) M = this._Man(H, M);
+    this.M = clamp(M, -this.Ms, this.Ms);
+    this.Mirr = this.M;
+  }
+  step(Hnew){
+    const dH = Hnew - this.H;
+    if(Math.abs(dH) < 1e-12){ this.H = Hnew; return this.M / this.Ms; }
+    const delta = (dH >= 0) ? 1 : -1;
+    const Mirr0 = this.Mirr;
+    let Mirr = this.Mirr;
+    let M = this.M;
+    for(let it=0; it<3; it++){
+      const Man = this._Man(Hnew, M);
+      const diff = Man - Mirr;
+      let dMirr_dH = 0;
+      if(diff * delta > 0){
+        let denom = (this.k * delta) - (this.alpha * diff);
+        if(Math.abs(denom) < 1e-9) denom = (denom >= 0 ? 1 : -1) * 1e-9;
+        dMirr_dH = diff / denom;
+      }
+      Mirr = clamp(Mirr0 + dMirr_dH * dH, -this.Ms, this.Ms);
+      M = clamp((1 - this.c) * Mirr + this.c * Man, -this.Ms, this.Ms);
+    }
+    this.H = Hnew; this.Mirr = Mirr; this.M = M;
+    return M / this.Ms;
+  }
+}
+
+class TapeJAHysteresisStage{
+  constructor(baseSr, params){
+    this.sr = baseSr;
+    this.OS = 8;
+    this.srOS = this.sr * this.OS;
+
+    // FIX #2: bias at sr/2 -> 16 samples/cycle at 8x OS (stable hysteresis)
+    this.biasHz = this.sr * 0.5;
+    const w = 2*Math.PI*(this.biasHz / this.srOS);
+    this.sinInc = Math.sin(w);
+    this.cosInc = Math.cos(w);
+
+    this.oscSin = 0;
+    this.oscCos = 1;
+
+    this.lp1 = new Biquad(this.srOS);
+    this.lp2 = new Biquad(this.srOS);
+
+    this.core = new JilesAthertonCore(params || { Ms:350000, a:22000, k:25465, c:0.17, alpha:0.0016 });
+
+    this.prevX = 0;
+    this.Hscale = 1;
+    this.biasBaseH = 0;
+    this.biasGain = 1;
+    this.biasAmpH = 0;
+
+    this.setMediaParams(params || { Ms:350000, a:22000, k:25465, c:0.17, alpha:0.0016 });
+    this.setBiasGainFromDb(0);
+  }
+
+  _resetFilters(){ this.lp1.z1=0; this.lp1.z2=0; this.lp2.z1=0; this.lp2.z2=0; }
+
+  reset(){
+    this.core.reset();
+    this.prevX = 0;
+    this.oscSin = 0;
+    this.oscCos = 1;
+    this._resetFilters();
+  }
+
+  setMediaParams(p){
+    if(!p) return;
+    this.core.setParams(p);
+
+    this.Hscale = 3.0 * this.core.a;
+    const BIAS_MULT = 4.0;
+    this.biasBaseH = BIAS_MULT * this.core.k;
+
+    const cutoff = Math.min(22050, this.sr * 0.46);
+    this.lp1.sr = this.srOS;
+    this.lp2.sr = this.srOS;
+    this.lp1.set('lowpass', cutoff, 0.5411961, 0);
+    this.lp2.set('lowpass', cutoff, 1.3065630, 0);
+    this._resetFilters();
+
+    this.biasAmpH = this.biasBaseH * this.biasGain;
+  }
+
+  setBiasGainFromDb(biasDb){
+    this.biasGain = db2gain(biasDb||0);
+    this.biasAmpH = this.biasBaseH * this.biasGain;
+  }
+
+  initAtInput(x){
+    this.reset();
+    this.prevX = x;
+    this.core.initAtField(x * this.Hscale);
+  }
+
+  process(x){
+    const OS = this.OS;
+    const Hs = this.Hscale;
+    const biasA = this.biasAmpH;
+
+    let sin = this.oscSin, cos = this.oscCos;
+    const sinInc = this.sinInc, cosInc = this.cosInc;
+
+    let xi = this.prevX;
+    const step = (x - xi) / OS;
+
+    let y = 0;
+
+    for(let i=0;i<OS;i++){
+      xi += step;
+      const H = (xi * Hs) + (biasA * sin);
+      let v = this.core.step(H);
+      v = this.lp1.process(v);
+      v = this.lp2.process(v);
+      y = v;
+
+      const sinN = sin*cosInc + cos*sinInc;
+      const cosN = cos*cosInc - sin*sinInc;
+      sin = sinN; cos = cosN;
+    }
+
+    this.prevX = x;
+    this.oscSin = sin;
+    this.oscCos = cos;
+
+    return y;
+  }
+}
+
+/* === FFT match-EQ (FIX #5: smaller FFT => less latency) === */
+class FFT{
+  constructor(n){
+    this.n=n; this.levels=(Math.log2(n)|0);
+    this.cos=new Float32Array(n/2); this.sin=new Float32Array(n/2);
+    for(let i=0;i<n/2;i++){ const a=-2*Math.PI*i/n; this.cos[i]=Math.cos(a); this.sin[i]=Math.sin(a); }
+    this.br=new Uint32Array(n);
+    for(let i=0;i<n;i++){ let x=i,y=0; for(let j=0;j<this.levels;j++){ y=(y<<1)|(x&1); x>>=1; } this.br[i]=y>>>0; }
+  }
+  forward(re,im){
+    const n=this.n, br=this.br;
+    for(let i=0;i<n;i++){ const j=br[i]; if(j>i){ let tr=re[i];re[i]=re[j];re[j]=tr; let ti=im[i];im[i]=im[j];im[j]=ti; } }
+    for(let size=2; size<=n; size<<=1){
+      const half=size>>1, step=n/size;
+      for(let i=0;i<n;i+=size){
+        let k=0;
+        for(let j=i;j<i+half;j++){
+          const l=j+half, wr=this.cos[k], wi=this.sin[k];
+          const tr=wr*re[l]-wi*im[l], ti=wr*im[l]+wi*re[l];
+          re[l]=re[j]-tr; im[l]=im[j]-ti;
+          re[j]=re[j]+tr; im[j]=im[j]+ti;
+          k+=step;
+        }
+      }
+    }
+  }
+  inverse(re,im){
+    for(let i=0;i<this.n;i++) im[i]=-im[i];
+    this.forward(re,im);
+    const inv=1/this.n;
+    for(let i=0;i<this.n;i++){ re[i]=re[i]*inv; im[i]=-im[i]*inv; }
+  }
+}
+
+class PcMatchEqCore{
+  constructor(postCurve){
+    this.N=512; this.H=256; this.R=this.N*4;
+    this.fft=new FFT(this.N);
+    this.win=new Float32Array(this.N);
+    for(let i=0;i<this.N;i++){ const hann=0.5*(1-Math.cos(2*Math.PI*i/(this.N-1))); this.win[i]=Math.sqrt(hann); }
+    this.wet=[new Float32Array(this.R), new Float32Array(this.R)];
+    this.dry=[new Float32Array(this.R), new Float32Array(this.R)];
+    this.ola=[new Float32Array(this.R), new Float32Array(this.R)];
+    this.wpos=0; this.rpos=0; this.hc=0;
+
+    this.reL=new Float32Array(this.N); this.imL=new Float32Array(this.N);
+    this.reR=new Float32Array(this.N); this.imR=new Float32Array(this.N);
+    this.drL=new Float32Array(this.N); this.diL=new Float32Array(this.N);
+    this.drR=new Float32Array(this.N); this.diR=new Float32Array(this.N);
+
+    const bins=(this.N>>1)+1;
+    this.wetDb=new Float32Array(bins); this.dryDb=new Float32Array(bins);
+    this.gain=new Float32Array(bins); this.tmpDb=new Float32Array(bins);
+    for(let k=0;k<bins;k++) this.gain[k]=1;
+
+    this._send=0; this.postCurve=postCurve;
+  }
+  _frame(ring,start,re,im){
+    const R=this.R, N=this.N, w=this.win;
+    for(let i=0;i<N;i++){ const idx=(start+i)%R; re[i]=ring[idx]*w[i]; im[i]=0; }
+  }
+  reset(){
+    this.ola[0].fill(0); this.ola[1].fill(0); this.hc=0;
+    for(let k=0;k<this.gain.length;k++) this.gain[k]=1;
+  }
+  processBlock(wetL,wetR,dryL,dryR,outL,outR,amount){
+    const nS=wetL.length;
+    const maxDb=18.0, tSmooth=0.84, adapt0=0.22, gateDb=-76.0, fSmooth=0.30;
+    if(amount<=1e-4){
+      for(let i=0;i<nS;i++){ outL[i]=wetL[i]; outR[i]=wetR[i]; }
+      this.reset(); return;
+    }
+
+    const R=this.R;
+    for(let i=0;i<nS;i++){
+      this.wet[0][this.wpos]=wetL[i]; this.wet[1][this.wpos]=wetR[i];
+      this.dry[0][this.wpos]=dryL[i]; this.dry[1][this.wpos]=dryR[i];
+      const ol=this.ola[0][this.rpos], or=this.ola[1][this.rpos];
+      this.ola[0][this.rpos]=0; this.ola[1][this.rpos]=0;
+      outL[i]=ol; outR[i]=or;
+      this.wpos=(this.wpos+1)%R; this.rpos=(this.rpos+1)%R; this.hc++;
+    }
+
+    const bins=(this.N>>1)+1;
+    const adapt=adapt0*(0.35+0.65*amount);
+
+    while(this.hc>=this.H){
+      this.hc-=this.H;
+      const start=(this.wpos - this.N + R) % R;
+
+      this._frame(this.wet[0],start,this.reL,this.imL);
+      this._frame(this.wet[1],start,this.reR,this.imR);
+      this._frame(this.dry[0],start,this.drL,this.diL);
+      this._frame(this.dry[1],start,this.drR,this.diR);
+
+      this.fft.forward(this.reL,this.imL); this.fft.forward(this.reR,this.imR);
+      this.fft.forward(this.drL,this.diL); this.fft.forward(this.drR,this.diR);
+
+      for(let k=0;k<bins;k++){
+        const w1=Math.sqrt(this.reL[k]*this.reL[k]+this.imL[k]*this.imL[k]);
+        const w2=Math.sqrt(this.reR[k]*this.reR[k]+this.imR[k]*this.imR[k]);
+        const d1=Math.sqrt(this.drL[k]*this.drL[k]+this.diL[k]*this.diL[k]);
+        const d2=Math.sqrt(this.drR[k]*this.drR[k]+this.diR[k]*this.diR[k]);
+
+        const wmag=0.5*(w1+w2)+1e-12;
+        const dmag=0.5*(d1+d2)+1e-12;
+
+        const wdb=20*Math.log10(wmag);
+        const ddb=20*Math.log10(dmag);
+
+        this.wetDb[k]=tSmooth*this.wetDb[k]+(1-tSmooth)*wdb;
+        this.dryDb[k]=tSmooth*this.dryDb[k]+(1-tSmooth)*ddb;
+      }
+
+      this.tmpDb[0]=0; this.tmpDb[bins-1]=0;
+      for(let k=1;k<bins-1;k++){
+        const wd=this.wetDb[k], dd=this.dryDb[k];
+        if(wd<gateDb && dd<gateDb){ this.tmpDb[k]=0; continue; }
+        let diff=(dd-wd);
+        if(diff>maxDb) diff=maxDb;
+        if(diff<-maxDb) diff=-maxDb;
+        const wgt=Math.max(0,Math.min(1,(dd-gateDb)/22));
+        this.tmpDb[k]=diff*wgt*amount;
+      }
+
+      // shape-only (remove mean)
+      let lvlSum=0, lvlCnt=0;
+      for(let k=1;k<bins-1;k++){
+        if(Math.abs(this.tmpDb[k])>1e-6){ lvlSum+=this.tmpDb[k]; lvlCnt++; }
+      }
+      if(lvlCnt>0){
+        const lvlAvg=lvlSum/lvlCnt;
+        for(let k=1;k<bins-1;k++) this.tmpDb[k]-=lvlAvg;
+      }
+
+      if(fSmooth>1e-4){
+        for(let k=2;k<bins-2;k++){
+          const sm=(this.tmpDb[k-2]+2*this.tmpDb[k-1]+3*this.tmpDb[k]+2*this.tmpDb[k+1]+this.tmpDb[k+2])/9;
+          this.tmpDb[k]=(1-fSmooth)*this.tmpDb[k]+fSmooth*sm;
+        }
+      }
+
+      for(let k=1;k<bins-1;k++){
+        const targetLin=Math.pow(10,this.tmpDb[k]/20);
+        this.gain[k]=this.gain[k]+adapt*(targetLin-this.gain[k]);
+      }
+      this.gain[0]=1; this.gain[bins-1]=1;
+
+      for(let k=0;k<bins;k++){
+        const g=this.gain[k];
+        this.reL[k]*=g; this.imL[k]*=g;
+        this.reR[k]*=g; this.imR[k]*=g;
+        const mk=(k===0||k===bins-1)?-1:(this.N-k);
+        if(mk>0 && mk<this.N){
+          this.reL[mk]*=g; this.imL[mk]*=g;
+          this.reR[mk]*=g; this.imR[mk]*=g;
+        }
+      }
+
+      this.fft.inverse(this.reL,this.imL);
+      this.fft.inverse(this.reR,this.imR);
+
+      for(let i=0;i<this.N;i++){
+        const idx=(start+i)%R, w=this.win[i];
+        this.ola[0][idx]+=this.reL[i]*w;
+        this.ola[1][idx]+=this.reR[i]*w;
+      }
+
+      this._send++;
+      if(this._send>=4 && this.postCurve){
+        this._send=0;
+        const dec=4;
+        const outBins=Math.min(64, Math.floor((bins-2)/dec));
+        const arr=new Array(outBins);
+        for(let i=0;i<outBins;i++){
+          const kk=1+i*dec;
+          arr[i]=20*Math.log10(Math.max(1e-6,this.gain[kk]));
+        }
+        this.postCurve(arr);
+      }
+    }
+  }
+}
+
+const TAPE_TYPES=['406','456','499','GP9','SM900','SM911'];
+const tapeHysteresisParams = {
+  "406":  { Ms: 330000, a: 24000, k: 26260, c: 0.22, alpha: 0.0018 },
+  "456":  { Ms: 350000, a: 22000, k: 25465, c: 0.17, alpha: 0.0016 },
+  "499":  { Ms: 400000, a: 19000, k: 31035, c: 0.12, alpha: 0.0014 },
+  "GP9":  { Ms: 420000, a: 20000, k: 29443, c: 0.10, alpha: 0.0012 },
+  "SM900":{ Ms: 400000, a: 21000, k: 29443, c: 0.14, alpha: 0.0014 },
+  "SM911":{ Ms: 360000, a: 23000, k: 25465, c: 0.15, alpha: 0.0015 }
+};
+const tapeProfiles = {
+  "406": { saturationK: 2.2, saturationSoftness: 0.70, asymmetry: 0.15, hfShelfGain: -1.5, hfShelfFreq: 8000 },
+  "456": { saturationK: 1.6, saturationSoftness: 0.75, asymmetry: 0.12, hfShelfGain: -0.5, hfShelfFreq: 10000 },
+  "499": { saturationK: 0.9, saturationSoftness: 0.60, asymmetry: 0.10, hfShelfGain: +0.5, hfShelfFreq: 12000 },
+  "GP9": { saturationK: 0.8, saturationSoftness: 0.90, asymmetry: 0.08, hfShelfGain: 0.0, hfShelfFreq: 14000 },
+  "SM900":{ saturationK: 1.0, saturationSoftness: 0.95, asymmetry: 0.10, hfShelfGain: +1.0, hfShelfFreq: 16000 },
+  "SM911":{ saturationK: 1.4, saturationSoftness: 0.80, asymmetry: 0.12, hfShelfGain: +0.3, hfShelfFreq: 12000 }
+};
+const headBumpBySpeed = { 7.5:{freq:50,gain:2.8,Q:1.0}, 15:{freq:80,gain:2.2,Q:1.1}, 30:{freq:120,gain:1.6,Q:1.2} };
+const speedNoiseOffset = { 7.5:+6, 15:+3, 30:0 };
+const fluxivitySpecs = { 185:{dbOver185:0}, 250:{dbOver185:2.6}, 370:{dbOver185:6.0}, 500:{dbOver185:8.6} };
+const tapeFluxivitySpecs = {
+  "406": { inherentNoiseDb:-58, molOver185:9.0,  outputClass:3, designedFlux:250 },
+  "456": { inherentNoiseDb:-62, molOver185:12.3, outputClass:6, designedFlux:370 },
+  "499": { inherentNoiseDb:-65, molOver185:17.4, outputClass:9, designedFlux:500 },
+  "GP9": { inherentNoiseDb:-73, molOver185:17.5, outputClass:9, designedFlux:500 },
+  "SM900":{ inherentNoiseDb:-62, molOver185:18.8, outputClass:9, designedFlux:500 },
+  "SM911": { inherentNoiseDb:-60.5,molOver185:17.3, outputClass:6, designedFlux:370 }
+};
+const wowFlutterSpecs = {
+  7.5:{wowDepth:0.0008,flutterDepth:0.0003,wowRate:0.8,flutterRate:7.5},
+  15:{wowDepth:0.0005,flutterDepth:0.0002,wowRate:1.0,flutterRate:9.0},
+  30:{wowDepth:0.0003,flutterDepth:0.0001,wowRate:1.2,flutterRate:12.0}
+};
+function getEQ(speed, eqStd01){
+  const std=(eqStd01>=0.5)?'IEC':'NAB';
+  const table={
+    NAB:{7.5:{repro_hf:[3180,-1.25]},15:{repro_hf:[3180,-0.75]},30:{repro_hf:[3180,-0.50]}},
+    IEC:{7.5:{repro_hf:[2270,-0.75]},15:{repro_hf:[4550,-0.25]},30:{repro_hf:[9100, 0.00]}}
+  };
+  return (table[std] && table[std][speed]) || table.NAB[15];
+}
+function calculateTapeFluxInteraction(tapeType, fluxivity){
+  const tape=tapeFluxivitySpecs[tapeType]||tapeFluxivitySpecs['456'];
+  const flux=fluxivitySpecs[fluxivity]||fluxivitySpecs[250];
+  const effectiveNoiseDb=tape.inherentNoiseDb - flux.dbOver185;
+  const headroomDb=tape.molOver185 - flux.dbOver185;
+  const isOptimal=(fluxivity===tape.designedFlux);
+  const isCompatible=(flux.dbOver185<=tape.outputClass+1.5);
+  return {effectiveNoiseDb, headroomDb, isOptimal, isCompatible};
+}
+
+class AnalogExactDSP extends AudioWorkletProcessor{
+  static get parameterDescriptors(){
+    return [
+      {name:'inDb', defaultValue:0, minValue:-12, maxValue:12, automationRate:'k-rate'},
+      {name:'outDb', defaultValue:0, minValue:-24, maxValue:6, automationRate:'k-rate'},
+      {name:'biasDb', defaultValue:0, minValue:-5, maxValue:5, automationRate:'k-rate'},
+      {name:'headroomDb', defaultValue:0, minValue:-12, maxValue:12, automationRate:'k-rate'},
+      {name:'monitor', defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
+      {name:'headblock', defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
+      {name:'speed', defaultValue:15, minValue:7.5, maxValue:30, automationRate:'k-rate'},
+      {name:'flux', defaultValue:250, minValue:185, maxValue:500, automationRate:'k-rate'},
+      {name:'eqStd', defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
+      {name:'tapeType', defaultValue:1, minValue:0, maxValue:5, automationRate:'k-rate'},
+      {name:'transformer', defaultValue:1, minValue:0, maxValue:1, automationRate:'k-rate'},
+      {name:'tapeHiss', defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
+      {name:'wowFlutter', defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
+      {name:'vibe', defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
+      {name:'preserve', defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
+      {name:'xfTrim', defaultValue:1, minValue:0.125, maxValue:8, automationRate:'k-rate'}
+    ];
+  }
+
+  constructor(){
+    super();
+    this.sr=sampleRate;
+
+    this.tapeHFShelf=[new Biquad(this.sr), new Biquad(this.sr)];
+    this.biasHF=[new Biquad(this.sr), new Biquad(this.sr)];
+    this.headBump=[new Biquad(this.sr), new Biquad(this.sr)];
+    this.deemph=[new Biquad(this.sr), new Biquad(this.sr)];
+
+    this.xfPrimaryHP=[new Biquad(this.sr), new Biquad(this.sr)];
+    this.xfLFBoost=[new Biquad(this.sr), new Biquad(this.sr)];
+    this.xfLFCut=[new Biquad(this.sr), new Biquad(this.sr)];
+    this.xfCoreLoss=[new Biquad(this.sr), new Biquad(this.sr)];
+    this.xfLeakageLP=[new Biquad(this.sr), new Biquad(this.sr)];
+    this.lpOut=[new Biquad(this.sr), new Biquad(this.sr)];
+
+    this.noiseHP=[new Biquad(this.sr), new Biquad(this.sr)];
+    this.noiseHF=[new Biquad(this.sr), new Biquad(this.sr)];
+
+    this.delay=new DelayLine(this.sr, 0.10);
+    this.phWow=0; this.phFl=0; this.phFl2=0;
+
+    this.ctLin=db2gain(CROSSTALK_DB);
+    this.mainLin=1-this.ctLin;
+
+    this.rngL=new XorShift(0x12345678);
+    this.rngR=new XorShift(0x87654321);
+
+    this.curveToSend=null;
+    this.matchEq=new PcMatchEqCore((arr)=>{ this.curveToSend=arr; });
+
+    this._tapeFn=(x)=>x;
+    this._xfFn=(x)=>Math.tanh(x*0.5)*0.997;
+    this.tapeOS=new OS4((x)=>this._tapeFn(x));
+    this.xfOS=new OS4((x)=>this._xfFn(x));
+
+    this.jaL = new TapeJAHysteresisStage(this.sr, tapeHysteresisParams["456"]);
+    this.jaR = new TapeJAHysteresisStage(this.sr, tapeHysteresisParams["456"]);
+    this._useJA = false;
+    this._jaTT = "456";
+    this._vibeTransition = 0;
+
+    this._biasKPos=1.6;
+    this._biasKNeg=1.6;
+    this._biasAsym=0.12;
+    this._dcxL=0;this._dcyL=0;this._dcxR=0;this._dcyR=0;
+
+    this._derived={};
+    this._last={};
+
+    this.mAccL=0; this.mAccR=0; this.mN=0; this.mTarget=(this.sr/30)|0;
+
+    this.tmpWetL=new Float32Array(128);
+    this.tmpWetR=new Float32Array(128);
+    this.tmpDryL=new Float32Array(128);
+    this.tmpDryR=new Float32Array(128);
+
+    // FIX #0: UI param delivery via postMessage (so knobs ALWAYS change DSP)
+    this._ui = {
+      inDb:0, outDb:0, biasDb:0, headroomDb:0,
+      monitor:0, headblock:0,
+      speed:15, flux:250, eqStd:0, tapeType:1,
+      transformer:1, tapeHiss:0, wowFlutter:0,
+      vibe:0, preserve:0, xfTrim:1
+    };
+    this._tgt = Object.assign({}, this._ui);
+    this._useMsg=false;
+    this.port.onmessage = (ev)=>{
+      const d=ev.data;
+      if(d && d.type==='params' && d.params){
+        this._useMsg=true;
+        Object.assign(this._tgt, d.params);
+      }
+    };
+  }
+
+  _ensureTmp(n){
+    if(this.tmpWetL.length===n) return;
+    this.tmpWetL=new Float32Array(n);
+    this.tmpWetR=new Float32Array(n);
+    this.tmpDryL=new Float32Array(n);
+    this.tmpDryR=new Float32Array(n);
+  }
+
+  _smoothUI(n){
+    const dt = n / this.sr;
+    const aFast = Math.exp(-dt/0.010);
+    const aSlow = Math.exp(-dt/0.030);
+
+    this._ui.inDb       = aFast*this._ui.inDb       + (1-aFast)*this._tgt.inDb;
+    this._ui.outDb      = aFast*this._ui.outDb      + (1-aFast)*this._tgt.outDb;
+    this._ui.biasDb     = aFast*this._ui.biasDb     + (1-aFast)*this._tgt.biasDb;
+    this._ui.headroomDb = aFast*this._ui.headroomDb + (1-aFast)*this._tgt.headroomDb;
+    this._ui.preserve   = aSlow*this._ui.preserve   + (1-aSlow)*this._tgt.preserve;
+    this._ui.xfTrim     = aFast*this._ui.xfTrim     + (1-aFast)*this._tgt.xfTrim;
+
+    // discrete controls update immediately
+    this._ui.monitor     = this._tgt.monitor;
+    this._ui.headblock   = this._tgt.headblock;
+    this._ui.speed       = this._tgt.speed;
+    this._ui.flux        = this._tgt.flux;
+    this._ui.eqStd       = this._tgt.eqStd;
+    this._ui.tapeType    = this._tgt.tapeType;
+    this._ui.transformer = this._tgt.transformer;
+    this._ui.tapeHiss    = this._tgt.tapeHiss;
+    this._ui.wowFlutter  = this._tgt.wowFlutter;
+    this._ui.vibe        = this._tgt.vibe;
+  }
+
+  _readParams(params){
+    // If we received UI messages, trust them (fixes "UI moves, DSP doesn't").
+    if(this._useMsg) return this._ui;
+
+    // fallback: AudioParams
+    return {
+      inDb:params.inDb[0], outDb:params.outDb[0], biasDb:params.biasDb[0], headroomDb:params.headroomDb[0],
+      monitor:params.monitor[0], headblock:params.headblock[0],
+      speed:params.speed[0], flux:params.flux[0], eqStd:params.eqStd[0], tapeType:params.tapeType[0],
+      transformer:params.transformer[0], tapeHiss:params.tapeHiss[0], wowFlutter:params.wowFlutter[0], vibe:params.vibe[0],
+      preserve:params.preserve[0], xfTrim:params.xfTrim[0]
+    };
+  }
+
+  _updateDerived(p){
+    const speed = (p.speed>=25?30:(p.speed>=11?15:7.5));
+    const flux  = (p.flux>=435?500:(p.flux>=310?370:(p.flux>=215?250:185)));
+    const eqStd = p.eqStd;
+    const tt    = TAPE_TYPES[clamp(Math.round(p.tapeType),0,5)] || '456';
+    const transformerOn = (p.transformer>=0.5);
+    const vibeOn = (p.vibe>=0.5);
+
+    const fluxDb=(fluxivitySpecs[flux]||fluxivitySpecs[250]).dbOver185;
+
+    const inDbEff = p.inDb + INPUT_DB_OFFSET;
+    const inGain  = Math.max(db2gain(inDbEff),0.001);
+
+    let flGain=Math.max(db2gain(fluxDb),0.001);
+    let outMakeupDb=0;
+    if(transformerOn){ flGain*=db2gain(-1.0); outMakeupDb+=1.0; }
+
+    const headroomGain=Math.max(db2gain(p.headroomDb),0.001);
+    const reproCompDb=-fluxDb;
+    const outGain=Math.max(db2gain(p.outDb + outMakeupDb + reproCompDb),0.001);
+
+    const tp=tapeProfiles[tt]||tapeProfiles['456'];
+    const hyst=tapeHysteresisParams[tt]||tapeHysteresisParams['456'];
+
+    if(this._last.tt!==tt || this._last.vibeOn!==vibeOn){
+      const baseAsym=tp.asymmetry;
+      if(!vibeOn){
+        const k=tp.saturationK;
+        const softness=tp.saturationSoftness;
+        const mix=softness*0.30;
+        const asym=baseAsym;
+        this._tapeFn=(x)=>{
+          // FIX: continuous slope through zero; asymmetry via even-order term (no crossover kink)
+          const u=k*(x+0.5*asym*x*x);
+          const hard=Math.tanh(u);
+          const soft=u/(1+Math.abs(u*0.5))/k;
+          let y=hard*(1-mix)+soft*mix;
+          y*=0.997;
+          return clamp(y,-0.997,0.997);
+        };
+      } else {
+        const kFactor=hyst.k/30000;
+        const cFactor=hyst.c;
+        const kBase=tp.saturationK;
+        const k=kBase*(0.94+0.12*kFactor);
+        let softness=tp.saturationSoftness;
+        softness+=(cFactor-0.14)*0.12;
+        softness=Math.min(0.98,Math.max(0.10,softness));
+        const mix=0.30;
+        const asym=baseAsym*(1.0+(1.0-kFactor)*0.15);
+
+        const vibeSlope=k*(1-softness*mix)+softness*mix;
+        const stdK=tp.saturationK;
+        const stdSoft=tp.saturationSoftness;
+        const stdSlope=stdK*(1-stdSoft*0.3)+stdSoft*0.3;
+        const slopeNorm=stdSlope/Math.max(1e-6,vibeSlope);
+
+        this._tapeFn=(x)=>{
+          const u=k*(x+0.5*asym*x*x);
+          const hard=Math.tanh(u);
+          const soft=u/(1+Math.abs(u*0.5))/k;
+          let y=hard*(1-softness*mix)+soft*(softness*mix);
+          y*=slopeNorm;
+          return clamp(y,-0.997,0.997);
+        };
+      }
+      this.tapeOS.fn=(x)=>this._tapeFn(x);
+    }
+
+    if(vibeOn !== this._useJA){
+      this._vibeTransition = vibeOn ? 1 : -1;
+    }
+    this._useJA = vibeOn;
+
+    if(this._useJA){
+      const jaP = tapeHysteresisParams[tt] || tapeHysteresisParams["456"];
+      if(this._jaTT !== tt || this._vibeTransition===1){
+        // FIX: only (re)load media params on tape change; setMediaParams resets filter state
+        this.jaL.setMediaParams(jaP);
+        this.jaR.setMediaParams(jaP);
+        this._jaTT = tt;
+        this._vibeTransition = 1;
+      }
+      this.jaL.setBiasGainFromDb(p.biasDb);
+      this.jaR.setBiasGainFromDb(p.biasDb);
+    }
+
+    const bias=p.biasDb;
+    const tapeAsym=tp.asymmetry;
+    const biasAsymMod=clamp(bias*0.01,-0.05,0.05);
+    const finalAsym=1-(tapeAsym+biasAsymMod);
+    this._biasKPos=1.6;
+    this._biasKNeg=1.6;
+    this._biasAsym=clamp(tapeAsym+biasAsymMod,-0.3,0.3); // FIX: continuous asymmetry
+
+    const tapeHFFreq=tp.hfShelfFreq;
+    const tapeHFGain=tp.hfShelfGain;
+    const biasTilt=clamp(-0.6*bias,-3,3);
+    const bump=headBumpBySpeed[speed]||headBumpBySpeed[15];
+    const eq=getEQ(speed, eqStd);
+    const deemph={freq:eq.repro_hf[0], gain:eq.repro_hf[1]};
+    const lpFreq=transformerOn?20000:22050;
+
+    const wfSpec=wowFlutterSpecs[speed]||wowFlutterSpecs[15];
+    const wfOn=(p.wowFlutter>=0.5) && (p.monitor>=0.5);
+    // FIX: peak pitch deviation d (fraction) at rate f needs delay amplitude A = d/(2*pi*f) seconds
+    const wowDelayMod=wfSpec.wowDepth/(2*Math.PI*wfSpec.wowRate);
+    const flutterDelayMod=wfSpec.flutterDepth/(2*Math.PI*wfSpec.flutterRate);
+    const wf={ on:wfOn, wowRate:wfSpec.wowRate, flutterRate:wfSpec.flutterRate,
+      wowG:wfOn?wowDelayMod:0, flG:wfOn?flutterDelayMod:0, fl2G:wfOn?flutterDelayMod*0.7:0, baseDelay:0.005 };
+
+    const interaction=calculateTapeFluxInteraction(tt, flux);
+    const speedOff=speedNoiseOffset[speed]||0;
+    const finalNoiseDb=interaction.effectiveNoiseDb+speedOff;
+    const scaledNoiseDb=finalNoiseDb-22; // ≈ -83 dBFS for 456/250/15 (64 dB S/N re 0VU)
+    const hissOn=(p.tapeHiss>=0.5) && (p.monitor>=0.5);
+    const noiseGain=hissOn?Math.pow(10,scaledNoiseDb/20):0; // FIX: db2gain() floors at -60 dB
+
+    this._derived={ tt, inGain, flGain, headroomGain, outGain, tapeHFFreq, tapeHFGain, biasTilt, bump, deemph, lpFreq, wf, noiseGain, transformerOn };
+    for(let ch=0;ch<2;ch++){
+      this.tapeHFShelf[ch].set('highshelf', tapeHFFreq, 0.707, tapeHFGain);
+      this.biasHF[ch].set('highshelf', 8000, 0.707, biasTilt);
+      this.headBump[ch].set('peaking', bump.freq, bump.Q, bump.gain);
+      this.deemph[ch].set('highshelf', deemph.freq, 0.707, deemph.gain);
+
+      this.xfPrimaryHP[ch].set('highpass', 30, 0.707, 0);
+      this.xfLFBoost[ch].set('lowshelf', 150, 0.707, 4.0);
+      this.xfLFCut[ch].set('lowshelf', 150, 0.707, -4.0);
+      this.xfCoreLoss[ch].set('highshelf', 12000, 0.707, -1.0);
+      this.xfLeakageLP[ch].set('lowpass', 18000, 0.6, 0);
+      this.lpOut[ch].set('lowpass', lpFreq, 0.707, 0);
+
+      this.noiseHP[ch].set('highpass', 400, 0.5, 0);
+      this.noiseHF[ch].set('highshelf', 2000, 0.707, 6.0);
+    }
+
+    this._last={ tt, vibeOn };
+  }
+
+  process(inputs, outputs, params){
+    const input=inputs[0];
+    const output=outputs[0];
+    if(!input || input.length===0){
+      for(let ch=0;ch<output.length;ch++) output[ch].fill(0);
+      return true;
+    }
+    const inL=input[0];
+    const inR=input[1]||input[0];
+    const outL=output[0];
+    const outR=output[1]||output[0];
+    const n=outL.length;
+
+    this._ensureTmp(n);
+    if(this._useMsg) this._smoothUI(n);
+    const p=this._readParams(params);
+
+    const monoHB = (p.headblock>=0.5);
+    const isRepro = (p.monitor>=0.5);
+
+    if(isRepro) this._updateDerived(p);
+    const d=this._derived;
+
+    // INPUT monitor: bypass output (still meters)
+    if(!isRepro){
+      let sumL=0, sumR=0;
+      for(let i=0;i<n;i++){
+        let l=inL[i], r=inR[i];
+        if(monoHB){ const m=0.5*(l+r); l=m; r=m; }
+        outL[i]=l; outR[i]=r;
+        sumL += l*l; sumR += r*r;
+      }
+      this.mAccL += sumL; this.mAccR += sumR; this.mN += n;
+      if(this.mN >= this.mTarget){
+        const rmsL=Math.sqrt(this.mAccL/this.mN + 1e-20);
+        const rmsR=Math.sqrt(this.mAccR/this.mN + 1e-20);
+        this.port.postMessage({type:'meter', rmsL, rmsR});
+        this.mAccL=0; this.mAccR=0; this.mN=0;
+      }
+      this.matchEq.reset();
+      return true;
+    }
+
+    const preserveAmt = p.preserve;
+    const xfTrim=clamp(p.xfTrim,0.125,8.0);
+
+    const wowInc=d.wf.wowRate/this.sr;
+    const flInc=d.wf.flutterRate/this.sr;
+    const fl2Inc=(d.wf.flutterRate*0.6)/this.sr;
+
+    for(let i=0;i<n;i++){
+      let hbL=inL[i], hbR=inR[i];
+      if(monoHB){ const m=0.5*(hbL+hbR); hbL=m; hbR=m; }
+
+      // Preserve reference: raw input (what you want to match)
+      const dryL = hbL;
+      const dryR = hbR;
+      this.tmpDryL[i]=dryL; this.tmpDryR[i]=dryR;
+
+      let xL = dryL * d.headroomGain;
+      let xR = dryR * d.headroomGain;
+
+      xL *= d.inGain;
+      xR *= d.inGain;
+
+      xL *= d.flGain;
+      xR *= d.flGain;
+
+      if(this._useJA){
+        if(this._vibeTransition===1){
+          this.jaL.initAtInput(xL);
+          this.jaR.initAtInput(xR);
+          this._vibeTransition=0;
+        }
+        this.tapeOS.pL = xL;
+        this.tapeOS.pR = xR;
+
+        xL = this.jaL.process(xL);
+        xR = this.jaR.process(xR);
+      } else {
+        if(this._vibeTransition===-1){
+          this.tapeOS.pL = xL;
+          this.tapeOS.pR = xR;
+          this._vibeTransition=0;
+        }
+        xL=this.tapeOS.processL(xL);
+        xR=this.tapeOS.processR(xR);
+      }
+
+      xL=this.tapeHFShelf[0].process(xL);
+      xR=this.tapeHFShelf[1].process(xR);
+
+      xL=Math.tanh(this._biasKPos*(xL+0.5*this._biasAsym*xL*xL));
+      xR=Math.tanh(this._biasKPos*(xR+0.5*this._biasAsym*xR*xR));
+      // DC blocker (even-order asymmetry leaves a small offset)
+      { const yl=xL-this._dcxL+0.9995*this._dcyL; this._dcxL=xL; this._dcyL=yl; xL=yl;
+        const yr=xR-this._dcxR+0.9995*this._dcyR; this._dcxR=xR; this._dcyR=yr; xR=yr; }
+
+      xL=this.biasHF[0].process(xL);
+      xR=this.biasHF[1].process(xR);
+
+      xL=this.headBump[0].process(xL);
+      xR=this.headBump[1].process(xR);
+
+      xL=this.deemph[0].process(xL);
+      xR=this.deemph[1].process(xR);
+
+      xL*=d.outGain*xfTrim;
+      xR*=d.outGain*xfTrim;
+
+      if(d.transformerOn){
+        xL=this.xfPrimaryHP[0].process(xL);
+        xR=this.xfPrimaryHP[1].process(xR);
+
+        xL=this.xfLFBoost[0].process(xL);
+        xR=this.xfLFBoost[1].process(xR);
+
+        xL=this.xfOS.processL(xL);
+        xR=this.xfOS.processR(xR);
+
+        xL=this.xfLFCut[0].process(xL);
+        xR=this.xfLFCut[1].process(xR);
+
+        xL=this.xfCoreLoss[0].process(xL);
+        xR=this.xfCoreLoss[1].process(xR);
+
+        xL=this.xfLeakageLP[0].process(xL);
+        xR=this.xfLeakageLP[1].process(xR);
+      }
+
+      xL=this.lpOut[0].process(xL);
+      xR=this.lpOut[1].process(xR);
+
+      if(d.wf.on){
+        const tri=(ph)=>{ const t=ph-Math.floor(ph); return 2*Math.abs(2*(t-Math.floor(t+0.5)))-1; };
+        const wow=Math.sin(2*Math.PI*this.phWow);
+        const fl =Math.sin(2*Math.PI*this.phFl);
+        const fl2=tri(this.phFl2);
+        const mod=d.wf.wowG*wow + d.wf.flG*fl + d.wf.fl2G*fl2;
+        const delaySec=clamp(d.wf.baseDelay+mod,0,0.095);
+        const r=this.delay.read(delaySec*this.sr);
+        this.delay.write(xL,xR);
+        xL=r[0]; xR=r[1];
+        this.phWow+=wowInc; if(this.phWow>=1) this.phWow-=1;
+        this.phFl +=flInc;  if(this.phFl >=1) this.phFl -=1;
+        this.phFl2+=fl2Inc; if(this.phFl2>=1) this.phFl2-=1;
+      } else {
+        this.delay.write(xL,xR);
+      }
+
+      const l=this.mainLin*xL + this.ctLin*xR;
+      const r=this.mainLin*xR + this.ctLin*xL;
+      this.tmpWetL[i]=l;
+      this.tmpWetR[i]=r;
+    }
+
+    if(preserveAmt>1e-4){
+      this.matchEq.processBlock(this.tmpWetL,this.tmpWetR,this.tmpDryL,this.tmpDryR,outL,outR,preserveAmt);
+    } else {
+      for(let i=0;i<n;i++){ outL[i]=this.tmpWetL[i]; outR[i]=this.tmpWetR[i]; }
+      this.matchEq.reset();
+    }
+
+    if(d.noiseGain>0){
+      for(let i=0;i<n;i++){
+        const nl=this.noiseHF[0].process(this.noiseHP[0].process(this.rngL.next()))*d.noiseGain;
+        const nr=this.noiseHF[1].process(this.noiseHP[1].process(this.rngR.next()))*d.noiseGain;
+        outL[i]+=nl; outR[i]+=nr;
+      }
+    }
+
+    let sumL=0,sumR=0;
+    for(let i=0;i<n;i++){ const l=outL[i], r=outR[i]; sumL+=l*l; sumR+=r*r; }
+    this.mAccL+=sumL; this.mAccR+=sumR; this.mN+=n;
+    if(this.mN>=this.mTarget){
+      const rmsL=Math.sqrt(this.mAccL/this.mN + 1e-20);
+      const rmsR=Math.sqrt(this.mAccR/this.mN + 1e-20);
+      this.port.postMessage({type:'meter', rmsL, rmsR});
+      this.mAccL=0; this.mAccR=0; this.mN=0;
+    }
+
+    if(this.curveToSend){
+      this.port.postMessage({type:'curve', curveDb:this.curveToSend});
+      this.curveToSend=null;
+    }
+    return true;
+  }
+}
+registerProcessor('analogexact-dsp', AnalogExactDSP);
+`;
+
+  const url=URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
+  await ctx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+  __awLoaded=true;
+}
+
+/* ========= GRAPH (UPDATED: dryDelay for preserve-latency compensation) ========= */
+async function buildGraph(){
+  g={};
+
+  g.aw=new AudioWorkletNode(audioCtx,'analogexact-dsp',{
+    numberOfInputs:1, numberOfOutputs:1, outputChannelCount:[2],
+    channelCount:2, channelCountMode:'explicit', channelInterpretation:'speakers'
+  });
+
+  g.aw.onprocessorerror = (e)=>{
+    console.error('AudioWorklet crashed:', e);
+    showMsg('DSP crashed. Open console.');
+  };
+
+  g.dryGain = audioCtx.createGain();
+  g.dryDelay = audioCtx.createDelay(0.25);
+  g.wetGain = audioCtx.createGain();
+  g.sumGain = audioCtx.createGain();
+  g.postGain = audioCtx.createGain();
+
+  g.meter={rmsL:1e-9,rmsR:1e-9};
+  g.curveDb=[];
+  g.aw.port.onmessage=(ev)=>{
+    const d=ev.data;
+    if(!d) return;
+    if(d.type==='meter'){
+      g.meter.rmsL = Math.max(1e-12, d.rmsL||1e-12);
+      g.meter.rmsR = Math.max(1e-12, d.rmsR||1e-12);
+    } else if(d.type==='curve' && Array.isArray(d.curveDb)){
+      g.curveDb=d.curveDb;
+    }
+  };
+
+  // dry -> delay -> sum
+  g.dryGain.connect(g.dryDelay);
+  g.dryDelay.connect(g.sumGain);
+
+  // wet -> sum
+  g.aw.connect(g.wetGain);
+  g.wetGain.connect(g.sumGain);
+
+  // final -> post -> destination
+  g.sumGain.connect(g.postGain);
+  g.postGain.connect(audioCtx.destination);
+
+  applyParams();
+}
+
+const TAPE_TYPES=['406','456','499','GP9','SM900','SM911'];
+
+function sendParamsToWorklet(){
+  if(!g || !g.aw) return;
+  const mon = (state.monitor==='repro')?1:0;
+  const hb  = (state.headblock==='mono')?1:0;
+  const eqStd01 = (String(state.eq).toUpperCase()==='IEC')?1:0;
+  const tapeIndex = Math.max(0, Math.min(5, TAPE_TYPES.indexOf(state.tapeType)));
+
+  const preserveAmt = (state.monitor==='repro') ? (state.preserveAmount||0) : 0;
+  const wfOn = (state.monitor==='repro') ? (state.wowFlutter?1:0) : 0;
+  const hissOn = (state.monitor==='repro') ? (state.tapeHiss?1:0) : 0;
+
+  g.aw.port.postMessage({
+    type:'params',
+    params:{
+      inDb: safe(state.inDb,0),
+      outDb: safe(state.outDb,0),
+      biasDb: safe(state.bias,0),
+      headroomDb: safe(state.headroomDb,0),
+      monitor: mon,
+      headblock: hb,
+      speed: safe(state.speed,15),
+      flux: safe(state.flux,250),
+      eqStd: eqStd01,
+      tapeType: tapeIndex,
+      transformer: state.transformer?1:0,
+      tapeHiss: hissOn,
+      wowFlutter: wfOn,
+      vibe: state.vibeEnabled?1:0,
+      preserve: preserveAmt,
+      xfTrim: xfTrimTarget
+    }
+  });
+}
+
+function applyParams(){
+  if(!g||!audioCtx) return;
+  const now=audioCtx.currentTime;
+
+  // send DSP params (hard fix for "UI moves but DSP doesn't")
+  sendParamsToWorklet();
+
+  // ===== monitor + mix routing =====
+  const isInput = (state.monitor === 'input');
+
+  const mg = isInput ? {dry:1, wet:0} : mixGains01(state.mix01);
+  if(g.dryGain && g.wetGain){
+    g.dryGain.gain.setTargetAtTime(mg.dry, now, 0.01);
+    g.wetGain.gain.setTargetAtTime(mg.wet, now, 0.01);
+  }
+
+  // dry delay compensation only when blending (not in full wet)
+  const blending = (!isInput && state.mix01 < 0.999);
+  const preserveOn = blending && (state.preserveAmount||0) > 1e-4;
+  const wowOn = blending && !!state.wowFlutter;
+  let dsec = 0;
+  if(preserveOn) dsec += (PRESERVE_LATENCY_SAMPLES / audioCtx.sampleRate);
+  if(wowOn) dsec += 0.005; // baseDelay in worklet wow/flutter (approx align)
+  if(g.dryDelay){
+    g.dryDelay.delayTime.setTargetAtTime(dsec, now, 0.01);
+  }
+
+  // HARD FIX: if REPRO + 100% wet, physically disconnect mic from dry path (no dry leakage)
+  const needDryConnection = (isInput || state.mix01 < 0.999);
+  if(micSource && g.dryGain){
+    if(needDryConnection && !g._dryConnected){
+      try{ micSource.connect(g.dryGain); g._dryConnected=true; }catch{}
+    } else if(!needDryConnection && g._dryConnected){
+      try{ micSource.disconnect(g.dryGain); g._dryConnected=false; }catch{}
+    }
+  }
+
+  // post gain: unity in INPUT monitor
+  if(g.postGain){
+    const pg = isInput ? 1.0 : db2gain(state.postDb||0);
+    g.postGain.gain.setTargetAtTime(pg, now, 0.01);
+  }
+
+  setChannelDisplay(state.headblock==='mono');
+  if(headblockNote){
+    headblockNote.textContent = (state.headblock==='mono')
+      ? 'Full-track mono headblock active. Output is dual-mono.'
+      : 'Stereo 2-track headblock active.';
+  }
+
+  updateTapeHissNote();
+  updateWowFlutterNote();
+  updateFluxNote();
+  updateDspModeLabel();
+}
+
+function updateFluxNote(){
+  const fluxNote=$('flux-note'); if(!fluxNote) return;
+  const flux=fluxivitySpecs[state.flux]||fluxivitySpecs[250];
+  const interaction=calculateTapeFluxInteraction(state.tapeType,state.flux);
+  let noteText=`Operating level: +${flux.dbOver185.toFixed(1)} dB over 185`;
+  if(interaction.isOptimal) noteText+=` • Optimal for ${state.tapeType}`;
+  else if(!interaction.isCompatible) noteText+=` • ⚠️ May saturate ${state.tapeType}`;
+  fluxNote.textContent=noteText;
+}
+function updateTapeHissNote(){
+  const interaction=calculateTapeFluxInteraction(state.tapeType,state.flux);
+  const speedOffset=speedNoiseOffset[state.speed]||0;
+  const finalNoiseDb=interaction.effectiveNoiseDb+speedOffset;
+  if(tapehissNote){
+    tapehissNote.textContent=state.tapeHiss
+      ? `Active: ${state.tapeType} @ ${state.flux}nWb/m, ${state.speed}ips → ${finalNoiseDb.toFixed(0)} dB floor`
+      : 'Shaped noise floor (rises +3dB/oct toward HF).';
+  }
+}
+function updateWowFlutterNote(){
+  const wfSpec=wowFlutterSpecs[state.speed]||wowFlutterSpecs[15];
+  const totalWF=((wfSpec.wowDepth+wfSpec.flutterDepth)*100).toFixed(3);
+  if(wowflutterNote){
+    wowflutterNote.textContent=state.wowFlutter ? `Active: ~${totalWF}% weighted @ ${state.speed}ips` : 'Pitch modulation from transport mechanics.';
+  }
+}
+
+/* ===== VU loop ===== */
+function startVU(){
+  cancelAnimationFrame(rafVU);
+  const needle=db=>Math.max(-70,Math.min(20,(db+50)*2.25-70));
+  const loop=()=>{
+    try{
+      if(isOn && g && isProcessing){
+        const rmsL=(g.meter && g.meter.rmsL) ? g.meter.rmsL : 1e-9;
+        const rmsR=(g.meter && g.meter.rmsR) ? g.meter.rmsR : 1e-9;
+        const dbL=20*Math.log10(rmsL), dbR=20*Math.log10(rmsR);
+        if(vuL) vuL.style.transform=`rotate(${needle(dbL)}deg)`;
+        if(vuR) vuR.style.transform=`rotate(${needle(dbR)}deg)`;
+      } else {
+        if(vuL) vuL.style.transform='rotate(-70deg)';
+        if(vuR) vuR.style.transform='rotate(-70deg)';
+      }
+      if(pcCtx && g && Array.isArray(g.curveDb)) drawPreserveSpectrumFromCurve(g.curveDb, state.preserveAmount||0);
+    }catch{}
+    rafVU=requestAnimationFrame(loop);
+  };
+  loop();
+}
+
+/* ===== knob helper ===== */
+function makeKnob(knobId,valId,key,min,max,fmt){
+  const el=$(knobId); if(!el) return;
+  const ind=el.querySelector('.knob-ind'); if(!ind) return;
+  const val=$(valId);
+  let dragging=false,startY=0,startVal=0,pid=null;
+  function setVal(v){
+    const c=Math.min(max,Math.max(min,safe(v,0)));
+    state[key]=Math.round(c*1000)/1000;
+    const pct=(state[key]-min)/(max-min);
+    ind.style.transform=`rotate(${270*pct-135}deg)`;
+    if(val) val.textContent=fmt(state[key]);
+    applyParams();
+  }
+  const initVal = (state[key]!==undefined && state[key]!==null) ? state[key] : 0;
+  setVal(initVal);
+  on(el,'pointerdown',e=>{ dragging=true; pid=e.pointerId; startY=e.clientY; startVal=safe(state[key],0); try{el.setPointerCapture(pid);}catch{} document.body.style.cursor='ns-resize'; e.preventDefault(); });
+  on(el,'pointermove',e=>{ if(!dragging||(pid!==null&&e.pointerId!==pid))return; const dy=startY-e.clientY; setVal(startVal+(dy/150)*(max-min)); });
+  const end=e=>{ if(!dragging||(pid!==null&&e.pointerId!==pid))return; dragging=false; try{el.releasePointerCapture(pid);}catch{} pid=null; document.body.style.cursor='default'; };
+  on(el,'pointerup',end); on(el,'pointercancel',end); on(el,'pointerleave',e=>{ if(dragging) end(e); });
+  on(el,'wheel',e=>{ e.preventDefault(); const step=(max-min)/100; setVal(safe(state[key],0)+(e.deltaY<0? step : -step)); }, {passive:false});
+}
+
+/* ===== preserve knob ===== */
+function makePreserveKnob(){
+  const el=knobPreserve; if(!el) return;
+  const ind=el.querySelector('.knob-ind'); if(!ind) return;
+  let dragging=false,startY=0,startVal=0,pid=null;
+  function setVal(v){
+    const c=Math.min(100,Math.max(0,safe(v,0)));
+    state.preserveAmount=c/100;
+    const pct=c/100;
+    ind.style.transform=`rotate(${270*pct-135}deg)`;
+    if(valPreserve) valPreserve.textContent=`${Math.round(c)}%`;
+    if(preserveCharStatus) preserveCharStatus.textContent = state.preserveAmount>0 ? `FFT match-EQ: ON (${Math.round(c)}%)` : 'FFT match-EQ: 0% = off';
+    applyParams();
+  }
+  setVal((state.preserveAmount||0)*100);
+  on(el,'pointerdown',e=>{ dragging=true; pid=e.pointerId; startY=e.clientY; startVal=(state.preserveAmount||0)*100; try{el.setPointerCapture(pid);}catch{} document.body.style.cursor='ns-resize'; e.preventDefault(); });
+  on(el,'pointermove',e=>{ if(!dragging||(pid!==null&&e.pointerId!==pid))return; const dy=startY-e.clientY; setVal(startVal+(dy/150)*100); });
+  const end=e=>{ if(!dragging||(pid!==null&&e.pointerId!==pid))return; dragging=false; try{el.releasePointerCapture(pid);}catch{} pid=null; document.body.style.cursor='default'; };
+  on(el,'pointerup',end); on(el,'pointercancel',end); on(el,'pointerleave',e=>{ if(dragging) end(e); });
+  on(el,'wheel',e=>{ e.preventDefault(); setVal((state.preserveAmount||0)*100 + (e.deltaY<0?2:-2)); }, {passive:false});
+}
+
+/* ===== switches ===== */
+function setActive(group,btn){ group.querySelectorAll('button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+function setSwitch(id,dataKey,value){
+  const el=$(id); if(!el) return;
+  el.querySelectorAll('button').forEach(b=>{ b.classList.toggle('active', String(b.dataset[dataKey])===String(value)); });
+}
+
+/* ===== mic input ===== */
+async function connectMic(){
+  if(!audioCtx) throw new Error('no ctx');
+  try{
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false },
+      video: false
+    });
+    micSource = audioCtx.createMediaStreamSource(micStream);
+
+    // Always feed DSP input
+    micSource.connect(g.aw);
+
+    // Dry path connection is managed by applyParams() (to guarantee no dry leakage in REPRO full-wet)
+    g._dryConnected=false;
+    applyParams();
+
+    isProcessing = true;
+    showMsg('Mic connected. REPRO enables DSP; INPUT is hard bypass.');
+  } catch(e){
+    console.error(e);
+    showMsg('Mic permission denied. Enable microphone to hear processing.');
+    isProcessing = false;
+  }
+}
+function disconnectMic(){
+  try{ if(micSource){ micSource.disconnect(); } }catch{}
+  micSource=null;
+  if(micStream){
+    try{ micStream.getTracks().forEach(t=>t.stop()); }catch{}
+  }
+  micStream=null;
+}
+
+/* ===== POWER ===== */
+on(powerBtn,'click', async ()=>{
+  try{
+    if(!isOn){
+      audioCtx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
+      await audioCtx.resume();
+      await ensureAnalogWorklet(audioCtx);
+      await buildGraph();
+      await connectMic();
+
+      isOn=true;
+      initPreserveUI();
+      updateHysteresisParams();
+      updateTapeLegend();
+      setVibeEnabled(state.vibeEnabled);
+
+      powerBtn.classList.remove('bg-gray-600'); powerBtn.classList.add('bg-red-700');
+      btnExport.disabled=false;
+
+      startVU();
+      initialAutoCal();
+      applyParams();
+    } else {
+      disconnectMic();
+      isProcessing=false;
+      try{ await audioCtx.close(); }catch{}
+      audioCtx=null; g=null; isOn=false;
+
+      powerBtn.classList.add('bg-gray-600'); powerBtn.classList.remove('bg-red-700');
+      btnExport.disabled=true;
+
+      if(vuL) vuL.style.transform='rotate(-70deg)';
+      if(vuR) vuR.style.transform='rotate(-70deg)';
+      drawPreserveSpectrumFromCurve([],0);
+    }
+  }catch(e){
+    console.error(e);
+    showMsg('Power error (open console).');
+  }
+});
+
+/* ===== UI Wiring ===== */
+makeKnob('knob-in','val-in','inDb',-12,12,v=>`${v.toFixed(1)} dB`);
+makeKnob('knob-out','val-out','outDb',-24,6,v=>`${v.toFixed(1)} dB`);
+makeKnob('knob-bias','val-bias','bias',-5,5,v=>`${v.toFixed(1)} dB`);
+makePreserveKnob();
+
+/* Headroom slider */
+on(sliderHeadroom,'input',e=>{
+  const val=parseFloat(e.target.value);
+  state.headroomDb=val;
+  if(valHeadroom) valHeadroom.textContent=`${val>=0?'+':''}${val.toFixed(1)} dB`;
+  applyParams();
+});
+if(valHeadroom) valHeadroom.textContent=`${state.headroomDb>=0?'+':''}${state.headroomDb.toFixed(1)} dB`;
+if(sliderHeadroom) sliderHeadroom.value=state.headroomDb;
+
+/* POST slider (outside DSP) */
+on(sliderPost,'input',e=>{
+  const val=parseFloat(e.target.value);
+  state.postDb=val;
+  if(valPost) valPost.textContent=`${val>=0?'+':''}${val.toFixed(1)} dB`;
+  applyParams();
+});
+if(valPost) valPost.textContent=`${state.postDb>=0?'+':''}${state.postDb.toFixed(1)} dB`;
+if(sliderPost) sliderPost.value=state.postDb;
+
+/* MIX slider */
+on(sliderMix,'input',e=>{
+  const pct=parseInt(e.target.value,10);
+  state.mix01=Math.max(0,Math.min(1,(pct||0)/100));
+  if(valMix) valMix.textContent=`${Math.round(state.mix01*100)}%`;
+  applyParams();
+});
+if(valMix) valMix.textContent=`${Math.round(state.mix01*100)}%`;
+if(sliderMix) sliderMix.value=Math.round(state.mix01*100);
+
+/* Switch groups */
+on($('monitor'),'click',e=>{
+  if(e.target.tagName!=='BUTTON')return;
+  state.monitor=e.target.dataset.monitor;
+  setActive(e.currentTarget,e.target);
+  updateDspModeLabel();
+  applyParams();
+  showMsg(state.monitor==='input'
+    ? 'INPUT monitor: hard bypass (unity). Switch to REPRO for processing.'
+    : 'REPRO monitor: processing enabled.');
+});
+on($('headblock'),'click',e=>{ if(e.target.tagName!=='BUTTON')return; state.headblock=e.target.dataset.headblock; setActive(e.currentTarget,e.target); applyParams(); });
+
+on($('speed'),'click',e=>{ if(e.target.tagName!=='BUTTON')return; state.speed=parseFloat(e.target.dataset.speed); setActive(e.currentTarget,e.target); if(state.autoCal){ state.eq=eqForSpeed(state.speed); setSwitch('eq','eq',state.eq); } applyParams(); updateRationale(); });
+on($('flux'),'click',e=>{ if(e.target.tagName!=='BUTTON')return; state.flux=parseInt(e.target.dataset.flux,10); setActive(e.currentTarget,e.target); applyParams(); updateRationale(); });
+on($('eq'),'click',e=>{ if(e.target.tagName!=='BUTTON')return; state.eq=e.target.dataset.eq; setActive(e.currentTarget,e.target); applyParams(); updateRationale(); });
+on($('tape'),'click',e=>{ if(e.target.tagName!=='BUTTON')return; state.tapeType=e.target.dataset.tapetype; setActive(e.currentTarget,e.target); if(state.autoCal) applyCalibration(state.tapeType,true); else { applyParams(); updateRationale(); } updateHysteresisParams(); updateTapeLegend(); });
+
+on(tapehissSwitch,'click',e=>{ if(e.target.tagName!=='BUTTON')return; state.tapeHiss=(e.target.dataset.tapehiss==='on'); setActive(e.currentTarget,e.target); applyParams(); showMsg(`Tape Hiss ${state.tapeHiss?'ON':'OFF'}`); });
+on(wowflutterSwitch,'click',e=>{ if(e.target.tagName!=='BUTTON')return; state.wowFlutter=(e.target.dataset.wowflutter==='on'); setActive(e.currentTarget,e.target); applyParams(); showMsg(`Wow & Flutter ${state.wowFlutter?'ON':'OFF'}`); });
+
+on(vibeToggle,'click',()=>{
+  state.vibeEnabled=!state.vibeEnabled;
+  setVibeEnabled(state.vibeEnabled);
+  updateHysteresisParams();
+  updateTapeLegend();
+  applyParams();
+  showMsg(`VIBE ${state.vibeEnabled?'ON - Jiles-Atherton + Bias':'OFF - Standard Saturation'}`);
+});
+
+on(transformer,'click',()=>{
+  const wasOn=state.transformer;
+  transformer.classList.toggle('active');
+  state.transformer=transformer.classList.contains('active');
+  if(!wasOn && state.transformer){ xfTrimTarget=1.0; }
+  applyParams();
+});
+
+/* Auto Cal */
+on(calToggle,'click',()=>{
+  calToggle.classList.toggle('active');
+  state.autoCal=calToggle.classList.contains('active');
+  showMsg(`Auto Cal ${state.autoCal?'ENABLED':'DISABLED'}`);
+  updateRationale();
+});
+on(calNowBtn,'click',()=>applyCalibration(state.tapeType,true));
+
+function applyCalibration(tapeType,announce=false){
+  const preset=calPresets[tapeType]||calPresets['456'];
+  state.flux=preset.flux;
+  state.bias=preset.bias;
+  state.eq=eqForSpeed(state.speed);
+
+  setSwitch('flux','flux',String(preset.flux));
+  setSwitch('eq','eq',state.eq);
+
+  const knobBias=$('knob-bias');
+  const ind=knobBias ? knobBias.querySelector('.knob-ind') : null;
+  if(ind){
+    const min=-5,max=5,val=state.bias;
+    const pct=(Math.max(min,Math.min(max,val))-min)/(max-min);
+    ind.style.transform=`rotate(${270*pct-135}deg)`;
+  }
+  const vb=$('val-bias');
+  if(vb) vb.textContent=`${state.bias.toFixed(1)} dB`;
+
+  applyParams(); updateRationale(); updateFluxNote();
+  if(announce) showMsg(`Auto Cal: ${tapeType} → Flux ${preset.flux} nWb/m, ${state.eq}, Bias ${state.bias.toFixed(1)} dB`);
+}
+function initialAutoCal(){ applyCalibration(state.tapeType,false); }
+
+function updateRationale(){
+  if(!calRationale) return;
+  const hystParams=tapeHysteresisParams[state.tapeType]||tapeHysteresisParams['456'];
+  const fluxInteraction=calculateTapeFluxInteraction(state.tapeType,state.flux);
+  const fluxSpec=fluxivitySpecs[state.flux]||fluxivitySpecs[250];
+  const tapeFluxSpec=tapeFluxivitySpecs[state.tapeType]||tapeFluxivitySpecs['456'];
+
+  const eqNote=(state.speed>=30 && state.eq==='IEC')?'30ips→IEC keeps head-bump minimal.'
+    : (state.speed===15 && state.eq==='NAB')?'15ips→NAB is the classic balanced alignment.'
+    : (state.speed===7.5 && state.eq==='NAB')?'7.5ips→NAB adds LF body.'
+    : (state.eq==='IEC')?'IEC tightens lows / adds presence.':'NAB smooth highs / LF weight.';
+
+  const tapeNote=`${state.tapeType}: +${tapeFluxSpec.outputClass}dB tape, MOL ${tapeFluxSpec.molOver185}dB.`;
+  const fluxNote=`Flux ${state.flux}nWb/m (+${fluxSpec.dbOver185.toFixed(1)}dB): ${fluxInteraction.headroomDb.toFixed(1)}dB headroom, S/N ${Math.abs(fluxInteraction.effectiveNoiseDb).toFixed(0)}dB.`;
+  const vibeNote=state.vibeEnabled?` VIBE: k=${(hystParams.k/1000).toFixed(1)}kA/m.`:'';
+  const pcNote=state.preserveAmount>0?` Preserve ${Math.round(state.preserveAmount*100)}%.`:'';
+
+  calRationale.textContent=`Why: ${eqNote} ${tapeNote} ${fluxNote}${vibeNote} Bias ${state.bias.toFixed(1)}dB.${pcNote}`;
+}
+
+/* Tech panels */
+on(toggleTech,'click',()=>{
+  const open=techPanel.classList.contains('open');
+  if(open){
+    techPanel.style.maxHeight='0px'; techPanel.classList.remove('open');
+    toggleTech.textContent="Technician's Setup Panel ▼"; techPanel.style.opacity='0';
+  } else {
+    techPanel.classList.add('open');
+    techPanel.style.maxHeight=techPanel.scrollHeight+'px';
+    techPanel.style.opacity='1';
+    toggleTech.textContent="Technician's Setup Panel ▲";
+    setTimeout(()=>{ if(techPanel.classList.contains('open')) techPanel.style.maxHeight='none'; }, 500);
+  }
+});
+function toggleCollapsible(el){
+  const hidden=el.classList.contains('hidden-state');
+  if(hidden){
+    el.classList.remove('hidden-state');
+    el.style.maxHeight=el.scrollHeight+'px';
+    setTimeout(()=>{ el.style.maxHeight='none'; }, 350);
+  } else {
+    const h=el.scrollHeight;
+    el.style.maxHeight=h+'px';
+    requestAnimationFrame(()=>{ el.classList.add('hidden-state'); el.style.maxHeight='0px'; });
+  }
+}
+on(eqLegendBtn,'click',()=>toggleCollapsible(eqLegend));
+on(tapeLegendBtn,'click',()=>toggleCollapsible(tapeLegend));
+
+on(btnExport,'click', ()=>showMsg('Export disabled in CodePen build (mic realtime).'));
+
+/* Boot */
+initPreserveUI();
+updateHysteresisParams();
+updateTapeLegend();
+setVibeEnabled(state.vibeEnabled);
+updateRationale();
+updateFluxNote();
+updateTapeHissNote();
+updateWowFlutterNote();
+setChannelDisplay(state.headblock==='mono');
+updateDspModeLabel();
+
+})();
+</script>
+</body>
+</html>

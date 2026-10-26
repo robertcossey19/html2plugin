@@ -1,0 +1,4 @@
+node_modules/
+build/
+plugins/*/build/
+*.log
