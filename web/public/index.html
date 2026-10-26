@@ -126,7 +126,7 @@
 
   <p class="foot">
     Downloads: <b>VST3 installer</b> → Cubase. <b>AU installer</b> → Logic Pro / GarageBand. <b>Both</b> → one .pkg that installs both into /Library/Audio/Plug-Ins.
-    Each release's notes carry a <b>Signing</b> line: <b>Developer ID + notarized</b> opens like any Mac installer; <b>ad-hoc</b> means the Apple certificate secrets are not in the repo yet (see SIGNING.md) and the first open needs right-click → Open. Every release also carries REPORT.md (which knobs were bound, measured output vs the browser version) and SHA256SUMS.txt.
+    Each release's notes carry a <b>Signing</b> line: <b>Developer ID + notarized</b> opens like any Mac installer; <b>ad-hoc</b> means no Apple certificate yet (see SIGNING.md): the .pkg itself needs one approval (right-click → Open, or System Settings → Privacy &amp; Security → Open Anyway on macOS 15) and then the installer does the rest — it strips quarantine, re-signs the bundles and resets the AU cache, so no Terminal. Every release also carries REPORT.md (which knobs were bound, measured output vs the browser version) and SHA256SUMS.txt.
     If a plugin sounds like a straight wire, read <code>~/Library/Logs/html2plugin/&lt;name&gt;.log</code>.
   </p>
 </div>

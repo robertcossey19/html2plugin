@@ -160,8 +160,28 @@ jobs:
           ditto -c -k --keepParent "AU/$NAME.component" "out/$SAFE.component.zip"
           [ -d "Standalone/$NAME.app" ] && ditto -c -k --keepParent "Standalone/$NAME.app" "out/$SAFE-Standalone.app.zip"
           SIGN=(); [ -n "${PKG_SIGN_IDENTITY:-}" ] && SIGN=(--sign "$PKG_SIGN_IDENTITY" --timestamp)
-          pkgbuild --component "VST3/$NAME.vst3" --install-location /Library/Audio/Plug-Ins/VST3 --identifier "$BID.vst3" --version "$VER" "${SIGN[@]}" "out/$SAFE-VST3-Installer.pkg"
-          pkgbuild --component "AU/$NAME.component" --install-location /Library/Audio/Plug-Ins/Components --identifier "$BID.au" --version "$VER" "${SIGN[@]}" "out/$SAFE-AU-Installer.pkg"
+          # postinstall = the terminal ritual people do by hand, done by the installer as root instead:
+          # strip quarantine, make sure the bundle carries a valid signature (ad-hoc re-sign only if it is not Developer ID signed),
+          # then wipe the console user's AU cache and kick the registrar so Logic re-validates instead of showing a stale "failed" entry.
+          mkpost() { mkdir -p "$1"; cat > "$1/postinstall" <<EOT
+          #!/bin/bash
+          B="$2"
+          [ -e "\$B" ] || exit 0
+          /usr/bin/xattr -cr "\$B" 2>/dev/null || true
+          if ! /usr/bin/codesign --verify --deep --strict "\$B" 2>/dev/null || ! /usr/bin/codesign -dv "\$B" 2>&1 | grep -q "Authority=Developer ID"; then
+            /usr/bin/codesign --force --deep --sign - --timestamp=none "\$B" 2>/dev/null || true
+          fi
+          /bin/chmod -R a+rX "\$B"
+          U=\$(/usr/bin/stat -f %Su /dev/console 2>/dev/null); H=\$(/usr/bin/dscl . -read "/Users/\$U" NFSHomeDirectory 2>/dev/null | /usr/bin/awk '{print \$2}')
+          [ -n "\$H" ] && /bin/rm -rf "\$H/Library/Caches/AudioUnitCache" "\$H/Library/Caches/com.apple.audiounits.cache" 2>/dev/null
+          /usr/bin/killall -9 AudioComponentRegistrar 2>/dev/null || true
+          exit 0
+          EOT
+          chmod 755 "$1/postinstall"; }
+          mkpost scripts-vst3 "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"
+          mkpost scripts-au "/Library/Audio/Plug-Ins/Components/$NAME.component"
+          pkgbuild --component "VST3/$NAME.vst3" --install-location /Library/Audio/Plug-Ins/VST3 --identifier "$BID.vst3" --version "$VER" --scripts scripts-vst3 "${SIGN[@]}" "out/$SAFE-VST3-Installer.pkg"
+          pkgbuild --component "AU/$NAME.component" --install-location /Library/Audio/Plug-Ins/Components --identifier "$BID.au" --version "$VER" --scripts scripts-au "${SIGN[@]}" "out/$SAFE-AU-Installer.pkg"
           productbuild --package "out/$SAFE-VST3-Installer.pkg" --package "out/$SAFE-AU-Installer.pkg" "${SIGN[@]}" "out/$SAFE-Installer-VST3+AU.pkg"
           if [ "${NOTARIZE:-}" = "1" ] && [ -n "${PKG_SIGN_IDENTITY:-}" ]; then
             for p in out/*.pkg; do
@@ -183,8 +203,15 @@ jobs:
         env: { NAME: "${{ steps.id.outputs.name }}", TARGET: "${{ steps.id.outputs.target }}", MANU: "${{ steps.id.outputs.manu }}", CODE: "${{ steps.id.outputs.code }}" }
         run: |
           cd plugins/${{ matrix.slug }}/build/${TARGET}_artefacts/Release
+          # simulate a browser download: quarantine the installer and the bundles like Safari would, then install
+          xattr -w com.apple.quarantine "0083;$(printf '%x' $(date +%s));Safari;00000000-0000-0000-0000-000000000000" "out/$SAFE-Installer-VST3+AU.pkg"
           sudo installer -pkg "out/$SAFE-Installer-VST3+AU.pkg" -target / -verbose
           test -d "/Library/Audio/Plug-Ins/VST3/$NAME.vst3"; test -d "/Library/Audio/Plug-Ins/Components/$NAME.component"
+          for b in "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" "/Library/Audio/Plug-Ins/Components/$NAME.component"; do
+            codesign --verify --deep --strict --verbose=2 "$b"
+            if xattr -lr "$b" | grep -q com.apple.quarantine; then echo "::error::quarantine survived the installer on $b"; exit 1; fi
+          done
+          echo "installed bundles: valid signature, no quarantine attribute"
           killall -9 AudioComponentRegistrar 2>/dev/null || true; sleep 2
           mkdir -p "$GITHUB_WORKSPACE/testlogs"
           auval -v aufx "$CODE" "$MANU" 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/auval.txt"
