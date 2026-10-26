@@ -33,4 +33,4 @@ If a plugin loads but sounds like a straight wire, the JS engine failed and the 
 - `ScriptProcessorNode`, `OfflineAudioContext`-based realtime tricks and compressed `decodeAudioData` formats (mp3/ogg) are not supported in the plugin; PCM/float WAV is.
 - Pages whose graph is built only after a user gesture we cannot detect (no POWER/START-like control) run as pass-through until the user presses the control in the plugin UI.
 - CPU: JavaScript in-process. With JIT it is in the same ballpark as the browser; hosts without the `com.apple.security.cs.allow-jit` entitlement run the JSC interpreter (CI prints both numbers). For CPU-critical plugins, hand-port the worklet to C++ (see the `html-plugin-to-mac-vst-au` skill); this generator is the fidelity path.
-- Signing is ad-hoc unless `APPLE_CERT_P12_BASE64`, `APPLE_CERT_PASSWORD`, `APPLE_TEAM_ID`, `APPLE_SIGN_IDENTITY` secrets are set.
+- Signing is ad-hoc until the Apple secrets in [SIGNING.md](SIGNING.md) are set; with them every build is Developer ID signed, notarized, stapled and Gatekeeper-checked (`spctl -a -t install`) before release.

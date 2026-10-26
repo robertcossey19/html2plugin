@@ -67,18 +67,49 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { name: forged-projects, path: plugins }
-      - name: Import Developer ID certificate (optional)
+      - name: Import Developer ID certificates (optional; enables real signing + notarization)
         if: env.HAS_CERT != ''
         env:
           P12: ${{ secrets.APPLE_CERT_P12_BASE64 }}
           P12_PW: ${{ secrets.APPLE_CERT_PASSWORD }}
+          INSTALLER_P12: ${{ secrets.APPLE_INSTALLER_P12_BASE64 }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          echo "$P12" | base64 --decode > cert.p12
           security create-keychain -p ci build.keychain; security default-keychain -s build.keychain; security unlock-keychain -p ci build.keychain
-          security import cert.p12 -k build.keychain -P "$P12_PW" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
-          echo "PLUGIN_CODESIGN_IDENTITY=${{ secrets.APPLE_SIGN_IDENTITY }}" >> $GITHUB_ENV
-          echo "PLUGIN_DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}" >> $GITHUB_ENV
+          security set-keychain-settings -lut 7200 build.keychain
+          echo "$P12" | base64 --decode > cert.p12
+          security import cert.p12 -k build.keychain -P "$P12_PW" -T /usr/bin/codesign -T /usr/bin/productsign -T /usr/bin/pkgbuild -T /usr/bin/productbuild
+          if [ -n "$INSTALLER_P12" ]; then echo "$INSTALLER_P12" | base64 --decode > inst.p12; security import inst.p12 -k build.keychain -P "$P12_PW" -T /usr/bin/codesign -T /usr/bin/productsign -T /usr/bin/pkgbuild -T /usr/bin/productbuild; fi
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci build.keychain >/dev/null
+          rm -f cert.p12 inst.p12
+          APP_ID=$(security find-identity -v -p codesigning build.keychain | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')
+          INST_ID=$(security find-identity -v build.keychain | grep -o '"Developer ID Installer: [^"]*"' | head -1 | tr -d '"')
+          [ -n "$APP_ID" ] || { echo "::error::no 'Developer ID Application' identity in the .p12 — export the certificate WITH its private key from Keychain Access"; exit 1; }
+          [ -n "$INST_ID" ] || echo "::warning::no 'Developer ID Installer' identity found — .pkg files will be unsigned (bundles inside are still signed + notarized)"
+          echo "PLUGIN_CODESIGN_IDENTITY=$APP_ID" >> $GITHUB_ENV
+          echo "PKG_SIGN_IDENTITY=$INST_ID" >> $GITHUB_ENV
+          echo "PLUGIN_DEVELOPMENT_TEAM=${TEAM:-$(echo "$APP_ID" | sed -n 's/.*(\(.*\))$/\1/p')}" >> $GITHUB_ENV
+          echo "signing as: $APP_ID / ${INST_ID:-<no installer cert>}"
+      - name: Notary credentials (optional)
+        if: env.HAS_CERT != ''
+        env:
+          KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
+          KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APP_PW: ${{ secrets.APPLE_APP_PASSWORD }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$KEY_P8" ] && [ -n "$KEY_ID" ] && [ -n "$ISSUER" ]; then
+            echo "$KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+            xcrun notarytool store-credentials h2p --key "$RUNNER_TEMP/notary.p8" --key-id "$KEY_ID" --issuer "$ISSUER" --keychain "$HOME/Library/Keychains/build.keychain-db" >/dev/null
+            echo "NOTARIZE=1" >> $GITHUB_ENV; echo "notarytool: App Store Connect API key"
+          elif [ -n "$APPLE_ID" ] && [ -n "$APP_PW" ] && [ -n "$TEAM" ]; then
+            xcrun notarytool store-credentials h2p --apple-id "$APPLE_ID" --password "$APP_PW" --team-id "$TEAM" --keychain "$HOME/Library/Keychains/build.keychain-db" >/dev/null
+            echo "NOTARIZE=1" >> $GITHUB_ENV; echo "notarytool: Apple ID + app-specific password"
+          else
+            echo "::warning::certificate present but no notary credentials (APPLE_NOTARY_KEY_P8_BASE64 + APPLE_NOTARY_KEY_ID + APPLE_NOTARY_ISSUER_ID, or APPLE_ID + APPLE_APP_PASSWORD + APPLE_TEAM_ID) — Gatekeeper will still warn on download"
+          fi
       - name: Read plugin identity
         id: id
         run: |
@@ -95,27 +126,57 @@ jobs:
                 -DPLUGIN_CODESIGN_IDENTITY="${PLUGIN_CODESIGN_IDENTITY:--}" -DPLUGIN_DEVELOPMENT_TEAM="${PLUGIN_DEVELOPMENT_TEAM:-}"
           # juce_vst3_helper (moduleinfo.json generator) occasionally aborts on the hosted runner; a second, incremental build retries just that step
           cmake --build build --config Release --parallel || cmake --build build --config Release --parallel
-      - name: Sign + verify
+      - name: Sign + verify (+ notarize and staple the bundles when credentials exist)
         env: { NAME: "${{ steps.id.outputs.name }}", TARGET: "${{ steps.id.outputs.target }}" }
         run: |
           cd plugins/${{ matrix.slug }}/build/${TARGET}_artefacts/Release
           ID="${PLUGIN_CODESIGN_IDENTITY:--}"
+          cat > "$RUNNER_TEMP/ent.plist" <<'EOT'
+          <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/><key>com.apple.security.cs.disable-library-validation</key><true/><key>com.apple.security.device.audio-input</key><true/></dict></plist>
+          EOT
           for b in "VST3/$NAME.vst3" "AU/$NAME.component" "Standalone/$NAME.app"; do
             [ -d "$b" ] || continue
-            if [ "$ID" = "-" ]; then codesign --force --deep --sign - --timestamp=none "$b"; else codesign --force --deep --sign "$ID" --timestamp --options runtime "$b"; fi
+            if [ "$ID" = "-" ]; then codesign --force --deep --sign - --timestamp=none "$b"
+            else codesign --force --deep --sign "$ID" --timestamp --options runtime --entitlements "$RUNNER_TEMP/ent.plist" "$b"; fi
             codesign --verify --deep --strict --verbose=2 "$b"; lipo -info "$b/Contents/MacOS/$NAME"
           done
+          if [ "${NOTARIZE:-}" = "1" ]; then
+            for b in "VST3/$NAME.vst3" "AU/$NAME.component" "Standalone/$NAME.app"; do
+              [ -d "$b" ] || continue
+              ditto -c -k --keepParent "$b" "$RUNNER_TEMP/n.zip"
+              xcrun notarytool submit "$RUNNER_TEMP/n.zip" --keychain-profile h2p --keychain "$HOME/Library/Keychains/build.keychain-db" --wait --timeout 30m 2>&1 | tee "$RUNNER_TEMP/notary-$(basename "$b").log"
+              grep -q "status: Accepted" "$RUNNER_TEMP/notary-$(basename "$b").log" || { SUB=$(grep -m1 -o 'id: [0-9a-f-]*' "$RUNNER_TEMP/notary-$(basename "$b").log" | head -1 | cut -d' ' -f2); xcrun notarytool log "$SUB" --keychain-profile h2p --keychain "$HOME/Library/Keychains/build.keychain-db" || true; echo "::error::notarization rejected for $b"; exit 1; }
+              xcrun stapler staple "$b"; xcrun stapler validate "$b"
+            done
+            spctl -a -vv -t open --context context:primary-signature "Standalone/$NAME.app" 2>&1 | tee -a "$GITHUB_WORKSPACE/testlogs/gatekeeper.txt" || true
+          fi
       - name: Package (.pkg installers + zips)
         env: { NAME: "${{ steps.id.outputs.name }}", TARGET: "${{ steps.id.outputs.target }}", BID: "${{ steps.id.outputs.bid }}", VER: "${{ steps.id.outputs.ver }}" }
         run: |
           cd plugins/${{ matrix.slug }}/build/${TARGET}_artefacts/Release
-          mkdir -p out; SAFE=$(echo "$NAME" | sed 's/[^A-Za-z0-9._-]/_/g')
+          mkdir -p out "$GITHUB_WORKSPACE/testlogs"; SAFE=$(echo "$NAME" | sed 's/[^A-Za-z0-9._-]/_/g')
           ditto -c -k --keepParent "VST3/$NAME.vst3" "out/$SAFE.vst3.zip"
           ditto -c -k --keepParent "AU/$NAME.component" "out/$SAFE.component.zip"
           [ -d "Standalone/$NAME.app" ] && ditto -c -k --keepParent "Standalone/$NAME.app" "out/$SAFE-Standalone.app.zip"
-          pkgbuild --component "VST3/$NAME.vst3" --install-location /Library/Audio/Plug-Ins/VST3 --identifier "$BID.vst3" --version "$VER" "out/$SAFE-VST3-Installer.pkg"
-          pkgbuild --component "AU/$NAME.component" --install-location /Library/Audio/Plug-Ins/Components --identifier "$BID.au" --version "$VER" "out/$SAFE-AU-Installer.pkg"
-          productbuild --package "out/$SAFE-VST3-Installer.pkg" --package "out/$SAFE-AU-Installer.pkg" "out/$SAFE-Installer-VST3+AU.pkg"
+          SIGN=(); [ -n "${PKG_SIGN_IDENTITY:-}" ] && SIGN=(--sign "$PKG_SIGN_IDENTITY" --timestamp)
+          pkgbuild --component "VST3/$NAME.vst3" --install-location /Library/Audio/Plug-Ins/VST3 --identifier "$BID.vst3" --version "$VER" "${SIGN[@]}" "out/$SAFE-VST3-Installer.pkg"
+          pkgbuild --component "AU/$NAME.component" --install-location /Library/Audio/Plug-Ins/Components --identifier "$BID.au" --version "$VER" "${SIGN[@]}" "out/$SAFE-AU-Installer.pkg"
+          productbuild --package "out/$SAFE-VST3-Installer.pkg" --package "out/$SAFE-AU-Installer.pkg" "${SIGN[@]}" "out/$SAFE-Installer-VST3+AU.pkg"
+          if [ "${NOTARIZE:-}" = "1" ] && [ -n "${PKG_SIGN_IDENTITY:-}" ]; then
+            for p in out/*.pkg; do
+              xcrun notarytool submit "$p" --keychain-profile h2p --keychain "$HOME/Library/Keychains/build.keychain-db" --wait --timeout 30m 2>&1 | tee "$RUNNER_TEMP/notary-$(basename "$p").log"
+              grep -q "status: Accepted" "$RUNNER_TEMP/notary-$(basename "$p").log" || { echo "::error::notarization rejected for $p"; exit 1; }
+              xcrun stapler staple "$p"; xcrun stapler validate "$p"
+              spctl -a -vv -t install "$p" 2>&1 | tee -a "$GITHUB_WORKSPACE/testlogs/gatekeeper.txt"
+              spctl -a -t install "$p" || { echo "::error::Gatekeeper rejects $p even after notarization"; exit 1; }
+            done
+            echo "SIGNING_NOTE=Developer ID + notarized + stapled (${PLUGIN_CODESIGN_IDENTITY}) — Gatekeeper accepts these downloads without any workaround" >> $GITHUB_ENV
+          elif [ -n "${PLUGIN_CODESIGN_IDENTITY:-}" ] && [ "${PLUGIN_CODESIGN_IDENTITY}" != "-" ]; then
+            echo "SIGNING_NOTE=Developer ID signed (${PLUGIN_CODESIGN_IDENTITY}) but NOT notarized — Gatekeeper still warns on first open" >> $GITHUB_ENV
+          else
+            echo "SIGNING_NOTE=ad-hoc (no Apple Developer ID certificate in the repo secrets): right-click > Open, or xattr -dr com.apple.quarantine on the .pkg" >> $GITHUB_ENV
+          fi
           cp ../../../REPORT.md "out/$SAFE-REPORT.md"; shasum -a 256 out/* > out/SHA256SUMS.txt; ls -la out
           echo "SAFE=$SAFE" >> $GITHUB_ENV
       - name: Install like the user does, then auval (Logic's gatekeeper)
@@ -177,4 +238,4 @@ jobs:
           BOUND=$(grep -m1 "two-way UI binding" plugins/${{ matrix.slug }}/REPORT.md || true)
           gh release create "$TAG" plugins/${{ matrix.slug }}/build/${TARGET}_artefacts/Release/out/* --repo "${{ github.repository }}" \
             --title "$NAME — macOS VST3 + AU (build ${{ github.run_number }})" \
-            --notes "$(printf 'Universal (Apple Silicon + Intel). Double-click **%s-Installer-VST3+AU.pkg** then rescan plugins in Logic / Cubase.\n\nTests on this build: installer, auval, pluginval strictness 10 (VST3 + AU), HostTest incl. golden master vs Node/V8, editor open with audio.\n\n%s\n\nCPU (HostTest, 48 kHz / 512): %s\nCPU with JIT disabled: %s\n\nSigning: %s' "$SAFE" "$BOUND" "$CPU" "$CPU2" "${PLUGIN_CODESIGN_IDENTITY:-ad-hoc (right-click > Open or allow in System Settings once if Gatekeeper complains)}")"
+            --notes "$(printf 'Universal (Apple Silicon + Intel). Double-click **%s-Installer-VST3+AU.pkg** then rescan plugins in Logic / Cubase.\n\nTests on this build: installer, auval, pluginval strictness 10 (VST3 + AU), HostTest incl. golden master vs Node/V8, editor open with audio.\n\n%s\n\nCPU (HostTest, 48 kHz / 512): %s\nCPU with JIT disabled: %s\n\nSigning: %s' "$SAFE" "$BOUND" "$CPU" "$CPU2" "${SIGNING_NOTE:-ad-hoc}")"
