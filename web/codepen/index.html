@@ -133,7 +133,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const slugify = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 const REPO = 'robertcossey19/html2plugin', BRANCH = 'main';
 const RAW = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/`;
-const API = window.H2P_API || 'https://html2plugin.pplx.app'; // hosted forge backend (holds the repo deploy key); if it is down the page falls back to GitHub's editor
+const API = window.H2P_API || 'https://html2plugin.pplx.app/port/8000'; // hosted forge backend (holds the repo deploy key); if it is down the page falls back to GitHub's editor
 const MAX_PREFILL_URL = 6000; // GitHub rejects very long URLs; above this the content travels on the clipboard
 
 /* ---------- forge backend ---------- */
@@ -346,7 +346,7 @@ function wireDownloads() { }
 /* ---------- history ---------- */
 async function loadHistory() {
   try {
-    const rels = await gh(`/repos/${REPO}/releases?per_page=30`);
+    const rels = (await gh(`/repos/${REPO}/releases?per_page=50`)).slice().sort((a, b) => new Date(b.published_at || b.created_at) - new Date(a.published_at || a.created_at)); // GitHub orders by tag string, so build-14 would land below build-9
     if (!rels.length) { $('hist').innerHTML = '<div class="empty">No builds yet.</div>'; return; }
     $('hist').innerHTML = rels.map(r => { const m = r.tag_name.match(/^(.*)-build-(\d+)$/) || [, r.tag_name, '']; const d = r.published_at || r.created_at ? new Date(r.published_at || r.created_at) : null;
       return `<div class="row" data-id="${r.id}"><b>${esc(m[1])}</b><span class="mut">build ${esc(m[2])}${d ? ` · ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</span><span class="sp"></span><button data-open="${r.id}">Downloads</button></div><div class="rowbody" id="rb-${r.id}" style="display:none;margin:-2px 0 6px"></div>`; }).join('');

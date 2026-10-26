@@ -298,6 +298,7 @@ async function loadHistory() {
   try {
     let rels;
     try { rels = await gh(`/repos/${REPO}/releases?per_page=30`); } catch (e) { rels = await api('/api/releases'); }
+    rels = rels.slice().sort((a, b) => (new Date(b.published_at || b.created_at || 0) - new Date(a.published_at || a.created_at || 0)) || (Number((b.tag_name.match(/(\d+)$/) || [])[1] || 0) - Number((a.tag_name.match(/(\d+)$/) || [])[1] || 0))); // newest first; GitHub sorts by tag string
     if (!rels.length) { $('hist').innerHTML = '<div class="empty">No builds yet.</div>'; return; }
     $('hist').innerHTML = rels.map(r => { const m = r.tag_name.match(/^(.*)-build-(\d+)$/) || [, r.tag_name, '']; const d = r.published_at || r.created_at ? new Date(r.published_at || r.created_at) : null;
       return `<div class="row" data-id="${r.id}"><b>${esc(m[1])}</b><span class="mut">build ${esc(m[2])}${d ? ` · ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</span><span class="sp"></span><button data-open="${r.id}">Downloads</button></div><div class="rowbody" id="rb-${r.id}" style="display:none;margin:-2px 0 6px"></div>`; }).join('');
