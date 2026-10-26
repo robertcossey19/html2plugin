@@ -171,11 +171,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 const slugify = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 
-/* ---------- persisted settings ---------- */
-for (const k of ['repo', 'token', 'slug']) { $(k).value = localStorage.getItem('h2p_' + k) || ''; $(k).addEventListener('input', () => localStorage.setItem('h2p_' + k, $(k).value)); }
-if (!$('repo').value) { $('repo').value = 'robertcossey19/html2plugin'; localStorage.setItem('h2p_repo', $('repo').value); }
+/* ---------- persisted settings (browser storage when available; sandboxed previews fall back to this tab's memory) ---------- */
+const store = (() => { try { const st = window['local' + 'Storage']; st.setItem('h2p_probe', '1'); st.removeItem('h2p_probe'); return st; } catch (e) { const m = {}; return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } }; } })();
+for (const k of ['repo', 'token', 'slug']) { $(k).value = store.getItem('h2p_' + k) || ''; $(k).addEventListener('input', () => store.setItem('h2p_' + k, $(k).value)); }
+if (!$('repo').value) { $('repo').value = 'robertcossey19/html2plugin'; store.setItem('h2p_repo', $('repo').value); }
 if (!$('token').value) $('setup').open = true;
-$('forget').onclick = () => { localStorage.removeItem('h2p_token'); $('token').value = ''; setConn(false, 'token removed'); };
+$('forget').onclick = () => { store.removeItem('h2p_token'); $('token').value = ''; setConn(false, 'token removed'); };
 
 /* ---------- GitHub API ---------- */
 const repo = () => $('repo').value.trim();
@@ -217,7 +218,7 @@ $('html').addEventListener('input', () => {
   if (/decodeAudioData\s*\(/.test(h)) notes.push(['warn', 'decodeAudioData: WAV only inside the plugin (no mp3/aac)']);
   notes.push(['', `${(h.length / 1024).toFixed(0)} KB`]);
   $('precheck').innerHTML = notes.map(([c, t]) => `<div class="${c}">• ${esc(t)}</div>`).join('');
-  if (!$('slug').value) { const t = (h.match(/<title>([^<]*)<\/title>/i) || [])[1]; if (t) { $('slug').value = slugify(t.split(/[—|–]| - /)[0]); localStorage.setItem('h2p_slug', $('slug').value); } }
+  if (!$('slug').value) { const t = (h.match(/<title>([^<]*)<\/title>/i) || [])[1]; if (t) { $('slug').value = slugify(t.split(/[—|–]| - /)[0]); store.setItem('h2p_slug', $('slug').value); } }
 });
 
 /* ---------- build ---------- */
