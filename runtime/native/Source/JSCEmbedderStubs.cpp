@@ -15,7 +15,9 @@ struct H2PRemovableFeatureState {              // mirrors JSC's RemovableFeature
 };
 static_assert (sizeof (H2PRemovableFeatureState) == 536, "layout must match JavaScriptCore/AOTRemovableFeature.h");
 
+extern const H2PRemovableFeatureState Bun__removableFeatureState;        // 'extern' first: a const at namespace scope would otherwise get internal linkage
 __attribute__((visibility("hidden"))) const H2PRemovableFeatureState Bun__removableFeatureState = {};
+__attribute__((visibility("hidden"))) int h2p_jsc_embedder_stubs_anchor = 1;   // referenced with -u so this object is always pulled out of the archive
 
 __attribute__((visibility("hidden"), noreturn)) void Bun__abortForRemovedFeature (uint16_t) { abort(); }
 __attribute__((visibility("hidden"))) uint64_t Bun__throwForRemovedFeature (void*, uint16_t) { return 0; }

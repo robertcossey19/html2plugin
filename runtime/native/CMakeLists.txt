@@ -88,9 +88,16 @@ if(APPLE)
         target_sources(${H2P_TARGET} PRIVATE Source/JSCEmbedderStubs.cpp)
         target_link_libraries(${H2P_TARGET} PRIVATE
             "${H2P_JSC_DIR}/lib/libJavaScriptCore.a" "${H2P_JSC_DIR}/lib/libWTF.a" "${H2P_JSC_DIR}/lib/libbmalloc.a"
+            "${H2P_JSC_DIR}/lib/libmimalloc.a"
             icucore "-framework Foundation" "-framework CoreFoundation" "-framework Security")
         # keep the bundled engine private: the host process also maps Apple's JavaScriptCore.framework (through WebKit)
-        target_link_options(${H2P_TARGET} INTERFACE "LINKER:-unexported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/Source/jsc-unexported.txt")
+        target_link_options(${H2P_TARGET} INTERFACE
+            "LINKER:-unexported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/Source/jsc-unexported.txt"
+            # embedder table lives in our archive, which the linker visits before the engine: force the object in
+            "LINKER:-u,_h2p_jsc_embedder_stubs_anchor" "LINKER:-u,_Bun__removableFeatureState"
+            # Bun-only hooks the engine references weakly (null => WTF uses its generic run loop); ld64 needs told they may stay undefined
+            "LINKER:-U,_WTFTimer__create" "LINKER:-U,_WTFTimer__update" "LINKER:-U,_WTFTimer__deinit" "LINKER:-U,_WTFTimer__isActive"
+            "LINKER:-U,_WTFTimer__secondsUntilTimer" "LINKER:-U,_WTFTimer__cancel" "LINKER:-U,_Bun__thisThreadHasVM" "LINKER:-U,_Bun__reportUnhandledError")
     else()
         message(STATUS "html2plugin: system JavaScriptCore.framework (interpreter-only in hosts without allow-jit)")
         target_link_libraries(${H2P_TARGET} PRIVATE "-framework JavaScriptCore")

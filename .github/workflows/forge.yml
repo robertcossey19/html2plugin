@@ -130,7 +130,7 @@ jobs:
         # Apple's JavaScriptCore.framework only JITs in processes that carry com.apple.security.cs.allow-jit; plugin hosts
         # (Logic's AUHostingService, Cubase, ...) do not, so the worklet would run interpreted, 5-20x slower. Bun's prebuilt
         # JSC has no entitlement check and JITs wherever MAP_JIT memory exists (allow-unsigned-executable-memory, which hosts carry).
-        env: { JSC_TAG: autobuild-0b6b831aef91a68bdc68a2941b1886ac73909310 }
+        env: { JSC_TAG: autobuild-0b6b831aef91a68bdc68a2941b1886ac73909310, MIMALLOC_COMMIT: 92ef6587c57b262f6e6abf513f7776a2f8d12aeb }
         run: |
           set -e
           D="$RUNNER_TEMP/jsc"; mkdir -p "$D/u/lib"; cd "$D"
@@ -140,12 +140,18 @@ jobs:
           done
           cp -R arm64/bun-webkit/include u/include
           for l in libJavaScriptCore.a libWTF.a libbmalloc.a; do lipo -create arm64/bun-webkit/lib/$l amd64/bun-webkit/lib/$l -output u/lib/$l; done
+          # that JSC build allocates through Bun's mimalloc fork (mi_theap_* API); compile its single unity TU, no malloc override
+          curl -sSfL --retry 3 -o mi.tgz "https://github.com/oven-sh/mimalloc/archive/$MIMALLOC_COMMIT.tar.gz" && mkdir mi && tar xzf mi.tgz -C mi --strip-components=1
+          MIFLAGS="-O2 -DNDEBUG -DMI_STATIC_LIB -DMI_SKIP_COLLECT_ON_EXIT=1 -DMI_NO_PROCESS_DETACH=1 -DMI_FREE_USE_PAGEMAP=1 -DMI_BUILD_RELEASE -DMI_CMAKE_BUILD_TYPE=release -fvisibility=hidden -Wno-deprecated -Wno-static-in-inline -Imi/include -mmacosx-version-min=13.0"
+          for a in arm64 x86_64; do clang -arch $a $MIFLAGS -c mi/src/static.c -o static-$a.o; ar rcs libmimalloc-$a.a static-$a.o; done
+          lipo -create libmimalloc-arm64.a libmimalloc-x86_64.a -output u/lib/libmimalloc.a
+          nm -g u/lib/libmimalloc.a 2>/dev/null | grep -c " T _mi_" || true
           lipo -info u/lib/libJavaScriptCore.a; du -sh u/lib
           echo "H2P_JSC_DIR=$D/u" >> $GITHUB_ENV
       - name: Configure + build (universal, Release)
         run: |
           cd plugins/${{ matrix.slug }}
-          cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+          cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
                 -DH2P_JSC_DIR="${H2P_JSC_DIR:-}" \
                 -DPLUGIN_CODESIGN_IDENTITY="${PLUGIN_CODESIGN_IDENTITY:--}" -DPLUGIN_DEVELOPMENT_TEAM="${PLUGIN_DEVELOPMENT_TEAM:-}"
           # juce_vst3_helper (moduleinfo.json generator) occasionally aborts on the hosted runner; a second, incremental build retries just that step
