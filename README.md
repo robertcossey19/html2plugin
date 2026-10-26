@@ -21,6 +21,12 @@ Local: `npm i && node forge/index.js page.html --out build/x --slug x && node te
 
 If a plugin loads but sounds like a straight wire, the JS engine failed and the plugin fell back to pass-through on purpose (never silence). The reason is in `~/Library/Logs/html2plugin/<slug>.log` (and on stderr of the host). CI runs the same check: HostTest fails on bit-exact pass-through, and `[h2p ...]` log lines appear in the HostTest step.
 
+## Measured on CI (ANALOGEXACT, build 7)
+
+- Golden master: plugin −22.07 dBFS / THD 1.420 % vs Node −22.07 dBFS / 1.420 % (1 kHz at −20 dBFS, 48 k, block 512), 8-point parameter sweep within tolerance, VST3 and AU.
+- auval passed, pluginval strictness 10 passed (VST3 + AU), installer tested, page-built graph matches the captured graph within 0.6 dB, DSP keeps running with the editor closed.
+- CPU: ~35 % of one core on the shared macos-14 runner for this (heavy, Jiles–Atherton) model; `JSC_useJIT=false` changed nothing, so JIT state inside the host is unconfirmed. Expect less on a desktop M-series machine (estimate, not measured).
+
 ## Limits (honest list)
 
 - macOS only (JavaScriptCore + WKWebView). Windows would need a different JS engine and WebView2.
