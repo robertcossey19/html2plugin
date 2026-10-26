@@ -63,14 +63,16 @@ public:
     static void log (const juce::String& line);                          // stderr + ~/Library/Logs/html2plugin/<target>.log (Release builds included)
 
 private:
+    // NOTE: everything loadManifest() fills must be declared BEFORE apvts — buildLayout() runs inside apvts's
+    // initialiser, and any member declared after apvts would be default-constructed afterwards (wiping it).
     juce::var manifest;
     juce::String pluginName;
     std::vector<H2PParamDef> defs;
+    std::string engineJs, workletsJs, bootOpsJson, hostNamesJson;
     std::vector<juce::RangedAudioParameter*> params;
     juce::AudioProcessorValueTreeState apvts;
 
     std::unique_ptr<JSHost> js;
-    std::string engineJs, workletsJs, bootOpsJson, hostNamesJson;
     double preparedRate = 0; int preparedBlock = 0;
     bool zeroLatency = false;
     std::atomic<int> generation { 0 };

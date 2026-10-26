@@ -17,6 +17,10 @@ The page is not rewritten. Inside the plugin:
 
 Local: `npm i && node forge/index.js page.html --out build/x --slug x && node tests/golden.js build/x`, then build `build/x` with CMake + Xcode on a Mac.
 
+## Troubleshooting
+
+If a plugin loads but sounds like a straight wire, the JS engine failed and the plugin fell back to pass-through on purpose (never silence). The reason is in `~/Library/Logs/html2plugin/<slug>.log` (and on stderr of the host). CI runs the same check: HostTest fails on bit-exact pass-through, and `[h2p ...]` log lines appear in the HostTest step.
+
 ## Limits (honest list)
 
 - macOS only (JavaScriptCore + WKWebView). Windows would need a different JS engine and WebView2.

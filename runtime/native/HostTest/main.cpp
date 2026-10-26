@@ -79,7 +79,8 @@ int main (int argc, char** argv)
       // a dead engine falls back to bit-exact pass-through: catch that explicitly instead of letting a 'finite output' test smile at it
       double ph = 0; bool identical = true; std::vector<float> ref; ref.reserve (y.size());
       { // regenerate the exact input the plugin saw for the tail (same phase continuity as Host::run: total samples = fs*1.0)
-        int total = (int) (h.fs * 1.0); std::vector<float> all; all.reserve ((size_t) total); double a = std::pow (10.0, -20 / 20.0);
+        int total = (int) (h.fs * 1.0); total = ((total + h.block - 1) / h.block) * h.block;   // Host::run renders whole blocks
+        std::vector<float> all; all.reserve ((size_t) total); double a = std::pow (10.0, -20 / 20.0);
         for (int n = 0; n < total; n++) { all.push_back ((float) (a * std::sin (ph))); ph += 2 * M_PI * 1000 / h.fs; }
         ref = tail (all, 16384);
       }

@@ -93,7 +93,8 @@ jobs:
           cd plugins/${{ matrix.slug }}
           cmake -S . -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
                 -DPLUGIN_CODESIGN_IDENTITY="${PLUGIN_CODESIGN_IDENTITY:--}" -DPLUGIN_DEVELOPMENT_TEAM="${PLUGIN_DEVELOPMENT_TEAM:-}"
-          cmake --build build --config Release --parallel
+          # juce_vst3_helper (moduleinfo.json generator) occasionally aborts on the hosted runner; a second, incremental build retries just that step
+          cmake --build build --config Release --parallel || cmake --build build --config Release --parallel
       - name: Sign + verify
         env: { NAME: "${{ steps.id.outputs.name }}", TARGET: "${{ steps.id.outputs.target }}" }
         run: |
