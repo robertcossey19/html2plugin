@@ -51,9 +51,9 @@ var H2P = (function () {
     hostParam: function (name, v) { return ctx.hostParam(name, v) ? 1 : 0; },
     errors: function () { var e = ctx ? ctx.errors.splice(0) : []; return JSON.stringify(e); },
     describe: function () { return ctx ? ctx.describeJSON() : '{}'; },
-    jitProbe: function () {   // same loop twice so tier-up has happened; report the second run
+    jitProbe: function () {   // best of 4 runs so tier-up has happened and one preempted run can't masquerade as the interpreter
       var best = 1e9;
-      for (var r = 0; r < 2; r++) { var t0 = Date.now(); var x = 0.1; for (var i = 0; i < 2000000; i++) { x = x * 0.9999999 + 0.000001; } var t = Date.now() - t0; if (x !== x) t = 1e9; if (t < best) best = t; }
+      for (var r = 0; r < 4; r++) { var t0 = Date.now(); var x = 0.1; for (var i = 0; i < 2000000; i++) { x = x * 0.9999999 + 0.000001; } var t = Date.now() - t0; if (x !== x) t = 1e9; if (t < best) best = t; }
       return best;
     }
   };

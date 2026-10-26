@@ -28,7 +28,7 @@ public:
     bool isReady() const { return ready; }
     std::string engineInfo;          // which JavaScriptCore this is and whether JIT memory was obtainable in this host process
     double jitProbeMs = -1;          // ms for a 2e6-iteration float loop measured inside this context right after init (FTL JIT: a few ms; LLInt interpreter: 100+ ms)
-    bool jitLikelyOn() const { return jitProbeMs >= 0 && jitProbeMs < 15.0; }   // M1: FTL ~2-5 ms, baseline ~10 ms, LLInt interpreter ~30 ms
+    bool jitLikelyOn() const { return jitProbeMs >= 0 && jitProbeMs < 20.0; }   // measured on CI M1: FTL/DFG 5-12 ms (best of 4), LLInt interpreter ~30 ms; 20 ms splits the gap
     double currentSampleRate = 0;
     int maxBlock = 0;
 

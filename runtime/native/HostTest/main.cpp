@@ -12,6 +12,9 @@
 #include <complex>
 #include <cstdio>
 #include <chrono>
+#include <exception>
+#include <execinfo.h>
+#include <unistd.h>
 
 static int failures = 0;
 #define CHECK(cond, ...) do { if (cond) { printf ("  PASS  "); } else { ++failures; printf ("  FAIL  "); } printf (__VA_ARGS__); printf ("\n"); } while (0)
@@ -50,6 +53,16 @@ static double thdPct (const std::vector<float>& y, double fs, double f0) { doubl
 
 int main (int argc, char** argv)
 {
+    // An uncaught C++ exception (e.g. a stale std::function fired by a late WebKit callback) used to abort with no stack.
+    // __cxa_throw calls the terminate handler from the throwing frame, so a backtrace here points at the culprit.
+    std::set_terminate ([]
+    {
+        if (auto e = std::current_exception()) { try { std::rethrow_exception (e); } catch (const std::exception& ex) { std::fprintf (stderr, "\nTERMINATE: uncaught %s\n", ex.what()); } catch (...) { std::fprintf (stderr, "\nTERMINATE: uncaught non-std exception\n"); } }
+        void* bt[96]; int n = backtrace (bt, 96);
+        std::fprintf (stderr, "backtrace (%d frames):\n", n); std::fflush (stderr);
+        backtrace_symbols_fd (bt, n, STDERR_FILENO);
+        std::abort();
+    });
     setvbuf (stdout, nullptr, _IONBF, 0);
     if (argc < 2) { printf ("usage: HostTest path/to/Plugin.vst3 [--editor] [--golden golden.json]\n"); return 2; }
     bool testEditor = false; juce::String goldenPath;
