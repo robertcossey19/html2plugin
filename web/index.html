@@ -2,112 +2,320 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>html2plugin — paste HTML, get VST3 + AU</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>html2plugin — paste HTML, get VST3 + AU</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter+Tight:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { color-scheme: dark; }
-  body { margin: 0; font: 15px/1.45 -apple-system, Inter, system-ui, sans-serif; background: #0f1115; color: #e6e6e6; }
-  main { max-width: 980px; margin: 0 auto; padding: 28px 20px 60px; }
-  h1 { font-size: 22px; margin: 0 0 4px; } p.sub { color: #9aa3b2; margin: 0 0 22px; }
-  label { display: block; font-size: 13px; color: #9aa3b2; margin: 14px 0 6px; }
-  input, textarea { width: 100%; box-sizing: border-box; background: #171a21; color: #e6e6e6; border: 1px solid #2a2f3a; border-radius: 8px; padding: 10px 12px; font: inherit; }
-  textarea { min-height: 260px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; white-space: pre; }
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  button { background: #3b82f6; color: white; border: 0; border-radius: 8px; padding: 11px 18px; font: inherit; font-weight: 600; cursor: pointer; margin-top: 16px; }
-  button:disabled { opacity: .5; cursor: default; }
-  .card { background: #141821; border: 1px solid #262b36; border-radius: 10px; padding: 14px 16px; margin-top: 18px; }
-  .ok { color: #4ade80; } .bad { color: #f87171; } .mut { color: #9aa3b2; }
-  pre { white-space: pre-wrap; font-size: 12.5px; margin: 8px 0 0; color: #cbd5e1; }
-  a { color: #93c5fd; }
-  .step { display: flex; gap: 10px; align-items: baseline; margin: 6px 0; } .dot { width: 9px; height: 9px; border-radius: 50%; background: #334155; flex: none; } .dot.run { background: #fbbf24; } .dot.ok { background: #4ade80; } .dot.bad { background: #f87171; }
-  small { color: #9aa3b2; }
+  :root {
+    --bg: #0d0f12; --panel: #14171c; --panel-2: #1a1e25; --line: #262b34; --line-2: #343b47;
+    --text: #e8eaee; --mut: #8b93a1; --dim: #5d6573;
+    --amber: #f2a93b; --amber-2: #ffd27a; --green: #5fd38a; --red: #ff6b6b; --blue: #6aa7ff;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Inter Tight", system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--mono); }
+  body { min-height: 100vh; background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(242,169,59,.07), transparent 60%),
+    linear-gradient(var(--bg), var(--bg)); }
+  a { color: var(--amber-2); text-decoration: none; } a:hover { text-decoration: underline; }
+  button { font: inherit; cursor: pointer; }
+  input, textarea { width: 100%; background: #0f1216; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font: inherit; outline: none; }
+  input:focus, textarea:focus { border-color: var(--amber); box-shadow: 0 0 0 3px rgba(242,169,59,.12); }
+  textarea { min-height: 320px; resize: vertical; font-size: 12.5px; white-space: pre; tab-size: 2; }
+  label { display: block; color: var(--mut); font-size: 12px; margin: 0 0 6px; letter-spacing: .02em; }
+  small, .mut { color: var(--mut); } .dim { color: var(--dim); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 36px 24px 80px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 28px; }
+  h1 { font: 700 28px/1.1 var(--sans); margin: 0; letter-spacing: -.02em; }
+  h1 em { font-style: normal; color: var(--amber); }
+  header p { margin: 6px 0 0; color: var(--mut); }
+  .pill { font-size: 12px; border: 1px solid var(--line-2); border-radius: 999px; padding: 4px 10px; color: var(--mut); background: var(--panel); }
+  .pill.ok { color: var(--green); border-color: rgba(95,211,138,.4); } .pill.bad { color: var(--red); border-color: rgba(255,107,107,.4); }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  .panel + .panel { margin-top: 16px; }
+  .panel h2 { font: 600 15px/1.2 var(--sans); margin: 0 0 14px; letter-spacing: .01em; display: flex; align-items: center; gap: 10px; }
+  .panel h2 .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--line-2); color: var(--amber); font: 600 12px var(--mono); }
+  .grid { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } .wrap { padding: 24px 16px 60px; } }
+
+  details.setup summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; }
+  details.setup summary::-webkit-details-marker { display: none; }
+  details.setup summary .chev { color: var(--dim); transition: transform .2s; } details.setup[open] summary .chev { transform: rotate(90deg); }
+  .setup-body { margin-top: 14px; }
+  ol.how { margin: 10px 0 0; padding-left: 18px; color: var(--mut); font-size: 12.5px; } ol.how li { margin: 3px 0; } ol.how code { color: var(--text); }
+
+  .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .btn { background: var(--amber); color: #1a1205; border: 0; border-radius: 8px; padding: 12px 18px; font: 600 14px var(--sans); letter-spacing: .01em; transition: transform .08s, filter .15s; }
+  .btn:hover { filter: brightness(1.06); } .btn:active { transform: translateY(1px); }
+  .btn[disabled] { background: var(--line-2); color: var(--mut); cursor: not-allowed; }
+  .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line-2); }
+  .btn.ghost:hover { border-color: var(--amber); }
+  #precheck { margin-top: 10px; font-size: 12.5px; color: var(--mut); } #precheck .warn { color: var(--amber-2); } #precheck .bad { color: var(--red); }
+
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 6px 0 14px; }
+  .step { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--panel-2); font-size: 12px; color: var(--mut); display: flex; gap: 8px; align-items: center; }
+  .step i { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); flex: none; }
+  .step.run i { background: var(--amber); box-shadow: 0 0 0 4px rgba(242,169,59,.18); animation: pulse 1.2s infinite; }
+  .step.ok { color: var(--text); } .step.ok i { background: var(--green); }
+  .step.bad { color: var(--red); } .step.bad i { background: var(--red); }
+  .step.skip { opacity: .5; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(242,169,59,.18);} 50% { box-shadow: 0 0 0 6px rgba(242,169,59,.06);} }
+  #log { background: #0b0d10; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font-size: 12px; max-height: 240px; overflow: auto; white-space: pre-wrap; color: var(--mut); margin: 0; }
+  #log .ok { color: var(--green); } #log .bad { color: var(--red); } #log .hi { color: var(--text); }
+
+  .downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 14px; }
+  .dl { border: 1px solid var(--line-2); border-radius: 10px; padding: 16px; background: var(--panel-2); display: flex; flex-direction: column; gap: 6px; }
+  .dl.primary { border-color: rgba(242,169,59,.55); background: linear-gradient(180deg, rgba(242,169,59,.08), transparent); }
+  .dl b { font: 600 15px var(--sans); } .dl small { font-size: 12px; }
+  .dl .act { margin-top: auto; display: flex; gap: 8px; align-items: center; padding-top: 8px; }
+  .dl .act button { background: var(--text); color: #0d0f12; border: 0; border-radius: 6px; padding: 8px 12px; font: 600 13px var(--sans); }
+  .dl .act button:hover { background: #fff; } .dl .act button[disabled] { opacity: .6; cursor: progress; }
+  .hist { margin-top: 10px; display: grid; gap: 6px; }
+  .hist .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); font-size: 12.5px; }
+  .hist .row b { font: 600 14px var(--sans); color: var(--text); }
+  .hist .row .sp { flex: 1; }
+  .hist .row button { background: transparent; color: var(--text); border: 1px solid var(--line-2); border-radius: 6px; padding: 6px 10px; font: 500 12px var(--sans); }
+  .hist .row button:hover { border-color: var(--amber); }
+  .empty { color: var(--dim); font-size: 12.5px; padding: 8px 0; }
+  .report { margin-top: 12px; font-size: 12px; color: var(--mut); white-space: pre-wrap; background: #0b0d10; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; max-height: 320px; overflow: auto; }
+  .foot { margin-top: 28px; color: var(--dim); font-size: 12px; line-height: 1.6; }
 </style>
 </head>
 <body>
-<main>
-  <h1>html2plugin</h1>
-  <p class="sub">Paste a Web Audio / AudioWorklet plugin page. Your repo's forge builds, tests and publishes a universal macOS VST3 (Cubase) + AU (Logic) installer. The page's own DSP and UI run unchanged inside the plugin.</p>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>html<em>2</em>plugin</h1>
+      <p>Paste the page you'd put in CodePen. Get a tested macOS <b>VST3</b> (Cubase) and <b>AU</b> (Logic).</p>
+    </div>
+    <span class="pill" id="connpill">not connected</span>
+  </header>
 
-  <div class="row">
-    <div><label>GitHub repository (owner/name)</label><input id="repo" placeholder="robertcossey19/html2plugin"></div>
-    <div><label>Fine-grained token <small>(this repo only: Contents read/write, Actions read, Workflows read/write; stored in this browser only)</small></label><input id="token" type="password" placeholder="github_pat_…"></div>
-  </div>
-  <div class="row">
-    <div><label>Plugin slug <small>(file name in inbox/, letters-digits-hyphens)</small></label><input id="slug" placeholder="my-tape-machine"></div>
-    <div><label>Source URL <small>(optional: a CodePen or any URL; the HTML is fetched by the workflow if the paste box is empty)</small></label><input id="url" placeholder="https://codepen.io/you/pen/abc"></div>
-  </div>
-  <label>Plugin HTML (the whole page, including the worklet code)</label>
-  <textarea id="html" placeholder="<!doctype html> …"></textarea>
-  <div id="precheck" class="mut" style="margin-top:8px"></div>
-  <button id="go">Build on GitHub</button>
+  <section class="panel">
+    <details class="setup" id="setup">
+      <summary><h2 style="margin:0"><span class="n">0</span> One-time setup <span class="chev">▶</span></h2></summary>
+      <div class="setup-body">
+        <div class="grid">
+          <div>
+            <label>GitHub repository (owner/name)</label>
+            <input id="repo" placeholder="robertcossey19/html2plugin" autocomplete="off" spellcheck="false">
+          </div>
+          <div>
+            <label>Fine-grained personal access token <small>(saved in this browser only, sent only to api.github.com)</small></label>
+            <input id="token" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+        <ol class="how">
+          <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com → Settings → Developer settings → Fine-grained tokens → Generate</a>.</li>
+          <li>Repository access: <code>Only select repositories</code> → the repo above.</li>
+          <li>Permissions: <code>Contents: Read and write</code>, <code>Actions: Read-only</code> (Metadata is added automatically). Nothing else.</li>
+          <li>Paste it here. Click <b>Test connection</b>.</li>
+        </ol>
+        <div class="toolbar">
+          <button class="btn ghost" id="test">Test connection</button>
+          <button class="btn ghost" id="forget">Forget token</button>
+          <span class="mut" id="testmsg"></span>
+        </div>
+      </div>
+    </details>
+  </section>
 
-  <div id="status" class="card" style="display:none">
-    <div class="step"><span class="dot" id="d1"></span><span>Commit <code id="path"></code></span></div>
-    <div class="step"><span class="dot" id="d2"></span><span>Forge (headless boot, worklet capture, control probing, golden master)</span></div>
-    <div class="step"><span class="dot" id="d3"></span><span>macOS build + auval + pluginval 10 + HostTest + CPU</span></div>
-    <div class="step"><span class="dot" id="d4"></span><span>Release</span></div>
+  <section class="panel">
+    <h2><span class="n">1</span> Paste the plugin page</h2>
+    <div class="grid" style="margin-bottom:12px">
+      <div>
+        <label>Plugin name <small>(file name in the repo; letters, digits, hyphens)</small></label>
+        <input id="slug" placeholder="auto-filled from the page &lt;title&gt;" autocomplete="off" spellcheck="false">
+      </div>
+      <div>
+        <label>…or a CodePen / page URL instead of pasting <small>(classic pen URLs only; leave empty when pasting)</small></label>
+        <input id="url" placeholder="https://codepen.io/you/pen/abcdef" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+    <label>Full HTML (everything you would paste into CodePen's HTML panel, worklet included)</label>
+    <textarea id="html" placeholder="<!doctype html> …" spellcheck="false"></textarea>
+    <div id="precheck"></div>
+    <div class="toolbar">
+      <button class="btn" id="go">Generate VST3 + AU</button>
+      <button class="btn ghost" id="clear">Clear</button>
+      <span class="mut">Takes about 9–12 minutes on Apple hardware in GitHub Actions. You can close this tab; the build shows up under Builds below.</span>
+    </div>
+  </section>
+
+  <section class="panel" id="status" style="display:none">
+    <h2><span class="n">2</span> Build <span class="mut" id="runlink"></span></h2>
+    <div class="steps" id="steps"></div>
     <pre id="log"></pre>
-    <div id="assets"></div>
-  </div>
-</main>
+    <div id="downloads"></div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="n">3</span> Builds <span class="mut" style="font:400 12px var(--mono)">every successful build, newest first</span></h2>
+    <div class="hist" id="hist"><div class="empty">Connect first (step 0) to list builds.</div></div>
+  </section>
+
+  <p class="foot">
+    Downloads: <b>VST3 installer</b> → Cubase. <b>AU installer</b> → Logic Pro / GarageBand. <b>Both</b> → one .pkg that installs both into /Library/Audio/Plug-Ins.
+    Builds are ad-hoc signed: the first open may need right-click → Open, or <code>xattr -dr com.apple.quarantine</code> on the .pkg. Every release also carries REPORT.md (which knobs were bound, measured output vs the browser version) and SHA256SUMS.txt.
+    If a plugin sounds like a straight wire, read <code>~/Library/Logs/html2plugin/&lt;name&gt;.log</code>.
+  </p>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const slugify = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+
+/* ---------- persisted settings ---------- */
 for (const k of ['repo', 'token', 'slug']) { $(k).value = localStorage.getItem('h2p_' + k) || ''; $(k).addEventListener('input', () => localStorage.setItem('h2p_' + k, $(k).value)); }
-const log = (m, cls) => { const p = $('log'); p.innerHTML += (cls ? `<span class="${cls}">` : '') + m.replace(/</g, '&lt;') + (cls ? '</span>' : '') + '\n'; };
-const dot = (n, s) => { $('d' + n).className = 'dot ' + (s || ''); };
+if (!$('repo').value) { $('repo').value = 'robertcossey19/html2plugin'; localStorage.setItem('h2p_repo', $('repo').value); }
+if (!$('token').value) $('setup').open = true;
+$('forget').onclick = () => { localStorage.removeItem('h2p_token'); $('token').value = ''; setConn(false, 'token removed'); };
 
-// quick client-side sanity check so obvious misses are caught before a 25-minute build
-$('html').addEventListener('input', () => {
-  const h = $('html').value; const notes = [];
-  if (!h.trim()) { $('precheck').textContent = ''; return; }
-  if (!/registerProcessor\s*\(/.test(h)) notes.push('no registerProcessor( found — the AudioWorklet module must be inline in the page (template literal, Blob or <script type="worklet">)');
-  if (!/addModule\s*\(/.test(h)) notes.push('no audioWorklet.addModule( call found');
-  if (/createScriptProcessor\s*\(/.test(h)) notes.push('uses ScriptProcessorNode — not supported in the plugin; port the processing to an AudioWorkletProcessor first');
-  const m = h.match(/<script\b[^>]*src=["'](https?:[^"']+)["']/gi) || [];
-  if (m.length) notes.push(`${m.length} external script(s) will be inlined at build time: ${m.map(x => x.match(/src=["']([^"']+)/)[1]).join(', ')}`);
-  const desc = (h.match(/parameterDescriptors[\s\S]*?\]\s*;?\s*\}/) || [''])[0]; const n = (desc.match(/name\s*:/g) || []).length;
-  if (n) notes.push(`${n} parameterDescriptors found`);
-  $('precheck').innerHTML = notes.map(x => '• ' + x.replace(/</g, '&lt;')).join('<br>');
-  if (!$('slug').value) { const t = (h.match(/<title>([^<]*)<\/title>/i) || [])[1]; if (t) { $('slug').value = t.split(/[—|–-]/)[0].trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); } }
-});
-
-async function gh(path, opts = {}) {
-  const r = await fetch('https://api.github.com' + path, Object.assign({ headers: { Authorization: 'Bearer ' + $('token').value.trim(), Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } }, opts));
-  if (!r.ok) throw new Error(path + ' -> ' + r.status + ' ' + (await r.text()).slice(0, 200));
+/* ---------- GitHub API ---------- */
+const repo = () => $('repo').value.trim();
+async function gh(path, opts = {}, raw = false) {
+  const headers = Object.assign({ Authorization: 'Bearer ' + $('token').value.trim(), Accept: raw ? 'application/octet-stream' : 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, opts.headers || {});
+  const r = await fetch('https://api.github.com' + path, Object.assign({}, opts, { headers }));
+  if (!r.ok) { let t = ''; try { t = (await r.text()).slice(0, 300); } catch (e) { } throw new Error(`${opts.method || 'GET'} ${path} → ${r.status} ${t}`); }
+  if (raw) return r;
   return r.status === 204 ? null : r.json();
 }
 const b64 = s => btoa(unescape(encodeURIComponent(s)));
 
+function setConn(ok, msg) { $('connpill').className = 'pill ' + (ok ? 'ok' : 'bad'); $('connpill').textContent = ok ? ('connected · ' + repo()) : (msg || 'not connected'); }
+async function testConnection(quiet) {
+  if (!$('token').value.trim() || !repo()) { setConn(false); return false; }
+  try {
+    const r = await gh(`/repos/${repo()}`);
+    const perm = r.permissions || {};
+    if (!perm.push) throw new Error('token has no write access to this repo (needs Contents: Read and write)');
+    setConn(true); if (!quiet) $('testmsg').textContent = `ok — ${r.full_name} (${r.private ? 'private' : 'public'}), default branch ${r.default_branch}`;
+    loadHistory(); return true;
+  } catch (e) { setConn(false, 'connection failed'); if (!quiet) $('testmsg').textContent = e.message; return false; }
+}
+$('test').onclick = () => testConnection(false);
+if ($('token').value) testConnection(true);
+
+/* ---------- paste pre-check ---------- */
+$('clear').onclick = () => { $('html').value = ''; $('url').value = ''; $('precheck').textContent = ''; };
+$('html').addEventListener('input', () => {
+  const h = $('html').value; const notes = [];
+  if (!h.trim()) { $('precheck').textContent = ''; return; }
+  if (!/registerProcessor\s*\(/.test(h)) notes.push(['bad', 'no registerProcessor( found — the AudioWorklet module must be inline in the page (template literal, Blob or <script type="worklet">)']);
+  if (!/addModule\s*\(/.test(h)) notes.push(['bad', 'no audioWorklet.addModule( call found']);
+  if (/createScriptProcessor\s*\(/.test(h)) notes.push(['bad', 'uses ScriptProcessorNode — not supported; port the processing to an AudioWorkletProcessor first']);
+  const ext = (h.match(/<script\b[^>]*src=["'](https?:[^"']+)["']/gi) || []).map(x => x.match(/src=["']([^"']+)/)[1]);
+  if (ext.length) notes.push(['', `${ext.length} external script(s) will be inlined at build time: ${ext.join(', ')}`]);
+  const n = (h.match(/parameterDescriptors/g) || []).length; if (n) notes.push(['', `parameterDescriptors present (${n})`]);
+  if (/getUserMedia\s*\(/.test(h)) notes.push(['', 'microphone input → plugin input (handled)']);
+  if (/decodeAudioData\s*\(/.test(h)) notes.push(['warn', 'decodeAudioData: WAV only inside the plugin (no mp3/aac)']);
+  notes.push(['', `${(h.length / 1024).toFixed(0)} KB`]);
+  $('precheck').innerHTML = notes.map(([c, t]) => `<div class="${c}">• ${esc(t)}</div>`).join('');
+  if (!$('slug').value) { const t = (h.match(/<title>([^<]*)<\/title>/i) || [])[1]; if (t) { $('slug').value = slugify(t.split(/[—|–]| - /)[0]); localStorage.setItem('h2p_slug', $('slug').value); } }
+});
+
+/* ---------- build ---------- */
+const STEPS = [
+  ['commit', 'commit to inbox/'], ['forge', 'forge (headless boot, worklet capture, knobs)'], ['build', 'compile universal VST3 + AU'],
+  ['sign', 'sign + package .pkg'], ['install', 'install + auval'], ['pluginval', 'pluginval strictness 10'], ['hosttest', 'HostTest vs browser golden master'], ['release', 'publish release']
+];
+const STEP_MATCH = { build: /Configure \+ build/i, sign: /Sign|Package/i, install: /Install like the user|auval/i, pluginval: /pluginval/i, hosttest: /HostTest/i, release: /Publish release/i };
+function renderSteps(state) { $('steps').innerHTML = STEPS.map(([k, label]) => `<div class="step ${state[k] || ''}"><i></i>${esc(label)}</div>`).join(''); }
+const log = (m, cls) => { const p = $('log'); p.innerHTML += `<span class="${cls || ''}">${esc(m)}</span>\n`; p.scrollTop = p.scrollHeight; };
+
 $('go').onclick = async () => {
-  const repo = $('repo').value.trim(), slug = $('slug').value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, ''); let html = $('html').value;
-  if (!repo || !$('token').value || !slug) return alert('repo, token and slug are required');
-  if (!html.trim() && !$('url').value.trim()) return alert('paste the HTML or give a source URL');
-  $('status').style.display = 'block'; $('log').textContent = ''; $('assets').innerHTML = ''; $('go').disabled = true;
+  const slug = slugify($('slug').value.trim()); let html = $('html').value; const url = $('url').value.trim();
+  if (!(await testConnection(true))) { $('setup').open = true; return alert('Connect first: repo + token in step 0.'); }
+  if (!slug) return alert('Give the plugin a name (step 1).');
+  if (!html.trim() && !url) return alert('Paste the HTML or give a page URL.');
+  $('status').style.display = 'block'; $('log').textContent = ''; $('downloads').innerHTML = ''; $('runlink').textContent = ''; $('go').disabled = true;
+  const state = { commit: 'run' }; renderSteps(state);
   try {
     const path = html.trim() ? `inbox/${slug}.html` : `inbox/${slug}.url`;
-    if (!html.trim()) html = $('url').value.trim() + '\n';
-    $('path').textContent = path; dot(1, 'run');
-    let sha; try { const cur = await gh(`/repos/${repo}/contents/${path}`); sha = cur.sha; } catch (e) { }
-    const commit = await gh(`/repos/${repo}/contents/${path}`, { method: 'PUT', body: JSON.stringify({ message: `forge: ${slug}`, content: b64(html), sha }) });
-    const commitSha = commit.commit.sha; dot(1, 'ok'); log(`committed ${commitSha.slice(0, 7)}`);
-    dot(2, 'run'); let run = null;
-    for (let i = 0; i < 40 && !run; i++) { await new Promise(r => setTimeout(r, 4000)); const rs = await gh(`/repos/${repo}/actions/runs?head_sha=${commitSha}&per_page=5`); run = (rs.workflow_runs || [])[0]; }
-    if (!run) throw new Error('workflow did not start (is .github/workflows/forge.yml on the default branch and are Actions enabled?)');
-    log(`run #${run.run_number}: ${run.html_url}`);
-    let done = false, lastStatus = '';
+    if (!html.trim()) html = url + '\n';
+    let sha; try { const cur = await gh(`/repos/${repo()}/contents/${path}`); sha = cur.sha; log(`${path} exists — replacing it`, 'hi'); } catch (e) { }
+    const commit = await gh(`/repos/${repo()}/contents/${path}`, { method: 'PUT', body: JSON.stringify({ message: `forge: ${slug}`, content: b64(html), sha }) });
+    const commitSha = commit.commit.sha; state.commit = 'ok'; state.forge = 'run'; renderSteps(state); log(`committed ${path} @ ${commitSha.slice(0, 7)}`);
+
+    let run = null;
+    for (let i = 0; i < 45 && !run; i++) { await sleep(4000); const rs = await gh(`/repos/${repo()}/actions/runs?head_sha=${commitSha}&per_page=5`); run = (rs.workflow_runs || [])[0]; }
+    if (!run) throw new Error('the workflow did not start — is Actions enabled on the repo and .github/workflows/forge.yml on the default branch?');
+    $('runlink').innerHTML = `<a href="${run.html_url}" target="_blank" rel="noopener">run #${run.run_number} ↗</a>`; log(`run #${run.run_number} started`);
+
+    let done = false, lastMsg = '';
     while (!done) {
-      await new Promise(r => setTimeout(r, 15000));
-      const r = await gh(`/repos/${repo}/actions/runs/${run.id}`); const jobs = await gh(`/repos/${repo}/actions/runs/${run.id}/jobs`);
-      const forge = (jobs.jobs || []).find(j => j.name === 'forge'), mac = (jobs.jobs || []).find(j => j.name.startsWith('mac'));
-      if (forge) dot(2, forge.status === 'completed' ? (forge.conclusion === 'success' ? 'ok' : 'bad') : 'run');
-      if (mac) { dot(3, mac.status === 'completed' ? (mac.conclusion === 'success' ? 'ok' : 'bad') : 'run'); const step = (mac.steps || []).find(s => s.status === 'in_progress'); const st = step ? `mac: ${step.name}` : `mac: ${mac.status}`; if (st !== lastStatus) { lastStatus = st; log(st, 'mut'); } }
-      if (r.status === 'completed') { done = true; if (r.conclusion !== 'success') { dot(4, 'bad'); log(`run finished: ${r.conclusion}. Open the run for logs (the ${slug}-test-logs artifact has auval/pluginval/HostTest output).`, 'bad'); } }
+      await sleep(12000);
+      const r = await gh(`/repos/${repo()}/actions/runs/${run.id}`); const jobs = (await gh(`/repos/${repo()}/actions/runs/${run.id}/jobs`)).jobs || [];
+      const forge = jobs.find(j => j.name === 'forge'), mac = jobs.find(j => j.name.startsWith('mac') && j.name.includes(slug)) || jobs.find(j => j.name.startsWith('mac'));
+      const cls = j => j.status === 'completed' ? (j.conclusion === 'success' ? 'ok' : (j.conclusion === 'skipped' ? 'skip' : 'bad')) : 'run';
+      if (forge) state.forge = cls(forge);
+      if (mac) {
+        for (const [k, rx] of Object.entries(STEP_MATCH)) {
+          const steps = (mac.steps || []).filter(s => rx.test(s.name)); if (!steps.length) continue;
+          if (steps.some(s => s.status === 'in_progress')) state[k] = 'run';
+          else if (steps.every(s => s.status === 'completed')) state[k] = steps.every(s => s.conclusion === 'success' || s.conclusion === 'skipped') ? (steps.every(s => s.conclusion === 'skipped') ? 'skip' : 'ok') : 'bad';
+          else if (steps.some(s => s.status === 'completed' && s.conclusion === 'failure')) state[k] = 'bad';
+        }
+        const cur = (mac.steps || []).find(s => s.status === 'in_progress'); const msg = cur ? cur.name : (mac.status === 'queued' ? 'waiting for a macOS runner' : mac.status);
+        if (msg !== lastMsg) { lastMsg = msg; log(msg); }
+      } else if (forge && forge.status === 'completed' && forge.conclusion === 'success' && lastMsg !== 'queued') { lastMsg = 'queued'; log('forge done, waiting for the macOS job'); }
+      renderSteps(state);
+      if (r.status === 'completed') { done = true; if (r.conclusion !== 'success') { for (const k of Object.keys(state)) if (state[k] === 'run') state[k] = 'bad'; renderSteps(state); log(`run finished: ${r.conclusion}. Open the run ↗ — the "${slug}-test-logs" artifact has auval / pluginval / HostTest output and the plugin log.`, 'bad'); } }
     }
-    const rel = await gh(`/repos/${repo}/releases?per_page=20`); const mine = (rel || []).find(x => x.tag_name === `${slug}-build-${run.run_number}`);
-    if (mine) { dot(4, 'ok'); log('release: ' + mine.html_url, 'ok'); $('assets').innerHTML = '<p><b>Downloads</b></p>' + mine.assets.map(a => `<div>• <a href="${a.browser_download_url}">${a.name}</a> <small>${(a.size / 1048576).toFixed(1)} MB</small></div>`).join('') + `<pre class="mut">${(mine.body || '').replace(/</g, '&lt;')}</pre>`; }
-  } catch (e) { log(String(e.message || e), 'bad'); }
+    const rel = await findRelease(slug, run.run_number, 6);
+    if (rel) { state.release = 'ok'; renderSteps(state); log(`release ready: ${rel.tag_name}`, 'ok'); $('downloads').innerHTML = downloadsHtml(rel, true); wireDownloads($('downloads'), rel); loadHistory(); }
+    else if (state.hosttest === 'ok') log('build passed but the release is not visible yet — check Builds below in a minute', 'hi');
+  } catch (e) { log(String(e.message || e), 'bad'); for (const k of Object.keys(state)) if (state[k] === 'run') state[k] = 'bad'; renderSteps(state); }
   $('go').disabled = false;
 };
+async function findRelease(slug, n, tries) { for (let i = 0; i < tries; i++) { try { return await gh(`/repos/${repo()}/releases/tags/${slug}-build-${n}`); } catch (e) { await sleep(5000); } } return null; }
+
+/* ---------- downloads (fetched through the API so private repos work; falls back to the browser link) ---------- */
+function pick(rel, rx) { return (rel.assets || []).find(a => rx.test(a.name)); }
+function card(a, title, sub, primary) {
+  if (!a) return '';
+  return `<div class="dl ${primary ? 'primary' : ''}"><b>${esc(title)}</b><small>${esc(sub)}</small><small class="dim">${esc(a.name)} · ${(a.size / 1048576).toFixed(1)} MB</small>
+    <div class="act"><button data-asset="${a.id}" data-name="${esc(a.name)}">Download</button><a href="${a.browser_download_url}" target="_blank" rel="noopener"><small>browser link</small></a></div></div>`;
+}
+function downloadsHtml(rel, withReport) {
+  const both = pick(rel, /Installer-VST3\+AU\.pkg$/), vst = pick(rel, /VST3-Installer\.pkg$/), au = pick(rel, /AU-Installer\.pkg$/), app = pick(rel, /Standalone\.app\.zip$/), rep = pick(rel, /REPORT\.md$/), sums = pick(rel, /SHA256SUMS/);
+  return `<div class="downloads">${card(vst, 'VST3 installer', 'Cubase, Nuendo, Reaper, Ableton, Studio One', true)}${card(au, 'AU installer', 'Logic Pro, GarageBand, MainStage', true)}${card(both, 'Both in one .pkg', 'installs VST3 + AU together')}${card(app, 'Standalone app', 'runs on its own with your audio interface')}</div>
+    <div class="mut" style="margin-top:10px;font-size:12px">${rep ? `<a href="#" data-report="${rep.id}">show REPORT.md</a> · ` : ''}${sums ? `<a href="${sums.browser_download_url}" target="_blank" rel="noopener">SHA256SUMS.txt</a> · ` : ''}<a href="${rel.html_url}" target="_blank" rel="noopener">release page ↗</a></div><div class="report" id="rep-${rel.id}" style="display:none"></div>`;
+}
+function wireDownloads(root, rel) {
+  root.querySelectorAll('button[data-asset]').forEach(b => b.onclick = () => downloadAsset(b.dataset.asset, b.dataset.name, b, rel));
+  root.querySelectorAll('a[data-report]').forEach(a => a.onclick = async (ev) => { ev.preventDefault(); const box = root.querySelector(`#rep-${rel.id}`); box.style.display = 'block'; box.textContent = 'loading…'; try { const r = await gh(`/repos/${repo()}/releases/assets/${a.dataset.report}`, {}, true); box.textContent = await r.text(); } catch (e) { box.textContent = e.message; } });
+}
+async function downloadAsset(id, name, btn, rel) {
+  const old = btn.textContent; btn.disabled = true; btn.textContent = 'fetching…';
+  try {
+    const r = await gh(`/repos/${repo()}/releases/assets/${id}`, {}, true); const blob = await r.blob();
+    const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 10000);
+    btn.textContent = 'saved';
+  } catch (e) {
+    // CORS on the storage redirect or a private-asset hiccup: hand the browser the normal link (works when signed in to GitHub)
+    const asset = (rel.assets || []).find(x => String(x.id) === String(id)); if (asset) window.open(asset.browser_download_url, '_blank');
+    btn.textContent = 'opened in a tab';
+  }
+  setTimeout(() => { btn.disabled = false; btn.textContent = old; }, 4000);
+}
+
+/* ---------- history ---------- */
+async function loadHistory() {
+  try {
+    const rels = await gh(`/repos/${repo()}/releases?per_page=30`);
+    if (!rels.length) { $('hist').innerHTML = '<div class="empty">No builds yet.</div>'; return; }
+    $('hist').innerHTML = rels.map(r => { const m = r.tag_name.match(/^(.*)-build-(\d+)$/) || [, r.tag_name, '']; const d = new Date(r.published_at || r.created_at);
+      return `<div class="row" data-id="${r.id}"><b>${esc(m[1])}</b><span class="mut">build ${esc(m[2])} · ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span class="sp"></span><button data-open="${r.id}">Downloads</button></div><div class="rowbody" id="rb-${r.id}" style="display:none;margin:-2px 0 6px"></div>`; }).join('');
+    $('hist').querySelectorAll('button[data-open]').forEach(b => b.onclick = () => { const rel = rels.find(x => String(x.id) === b.dataset.open); const box = $('rb-' + rel.id); const open = box.style.display !== 'none'; box.style.display = open ? 'none' : 'block'; if (!open) { box.innerHTML = downloadsHtml(rel, true); wireDownloads(box, rel); } });
+  } catch (e) { $('hist').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
 </script>
 </body>
 </html>
