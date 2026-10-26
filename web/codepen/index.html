@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>html2plugin — paste HTML, get VST3 + AU (CodePen edition)</title>
+<style>
+  :root {
+    --bg: #0d0f12; --panel: #14171c; --panel-2: #1a1e25; --line: #262b34; --line-2: #343b47;
+    --text: #e8eaee; --mut: #8b93a1; --dim: #5d6573;
+    --amber: #f2a93b; --amber-2: #ffd27a; --green: #5fd38a; --red: #ff6b6b; --blue: #6aa7ff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--mono); }
+  body { min-height: 100vh; background: radial-gradient(1200px 600px at 80% -10%, rgba(242,169,59,.07), transparent 60%), linear-gradient(var(--bg), var(--bg)); }
+  a { color: var(--amber-2); text-decoration: none; } a:hover { text-decoration: underline; }
+  button { font: inherit; cursor: pointer; }
+  input, textarea { width: 100%; background: #0f1216; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font: inherit; outline: none; }
+  input:focus, textarea:focus { border-color: var(--amber); box-shadow: 0 0 0 3px rgba(242,169,59,.12); }
+  textarea { min-height: 300px; resize: vertical; font-size: 12.5px; white-space: pre; tab-size: 2; }
+  label { display: block; color: var(--mut); font-size: 12px; margin: 0 0 6px; letter-spacing: .02em; }
+  small, .mut { color: var(--mut); } .dim { color: var(--dim); } .hi { color: var(--text); } .ok { color: var(--green); } .bad { color: var(--red); } .warn { color: var(--amber-2); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 36px 24px 80px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 28px; }
+  h1 { font: 700 28px/1.1 var(--sans); margin: 0; letter-spacing: -.02em; } h1 em { font-style: normal; color: var(--amber); }
+  header p { margin: 6px 0 0; color: var(--mut); }
+  .pill { font-size: 12px; border: 1px solid var(--line-2); border-radius: 999px; padding: 4px 10px; color: var(--mut); background: var(--panel); }
+  .pill.ok { color: var(--green); border-color: rgba(95,211,138,.4); } .pill.bad { color: var(--red); border-color: rgba(255,107,107,.4); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; } .panel + .panel { margin-top: 16px; }
+  .panel h2 { font: 600 15px/1.2 var(--sans); margin: 0 0 14px; display: flex; align-items: center; gap: 10px; }
+  .panel h2 .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--line-2); color: var(--amber); font: 600 12px var(--mono); }
+  .grid { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; align-items: end; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } .wrap { padding: 24px 16px 60px; } }
+  .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .btn { background: var(--amber); color: #1a1205; border: 0; border-radius: 8px; padding: 12px 18px; font: 600 14px var(--sans); transition: transform .08s, filter .15s; display: inline-block; text-decoration: none; }
+  .btn:hover { filter: brightness(1.06); text-decoration: none; } .btn:active { transform: translateY(1px); }
+  .btn[disabled], .btn.off { background: var(--line-2); color: var(--mut); cursor: not-allowed; pointer-events: none; }
+  .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line-2); } .btn.ghost:hover { border-color: var(--amber); }
+  #precheck { margin-top: 10px; font-size: 12.5px; color: var(--mut); }
+  .handoff { margin-top: 16px; border: 1px solid rgba(242,169,59,.45); border-radius: 10px; padding: 16px 18px; background: linear-gradient(180deg, rgba(242,169,59,.08), transparent); }
+  .handoff ol { margin: 8px 0 0; padding-left: 20px; } .handoff li { margin: 6px 0; } .handoff kbd { font: 600 12px var(--mono); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 6px; }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 6px 0 14px; }
+  .step { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--panel-2); font-size: 12px; color: var(--mut); display: flex; gap: 8px; align-items: center; }
+  .step i { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); flex: none; }
+  .step.run i { background: var(--amber); animation: pulse 1.2s infinite; }
+  .step.ok { color: var(--text); } .step.ok i { background: var(--green); } .step.bad { color: var(--red); } .step.bad i { background: var(--red); } .step.skip { opacity: .5; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(242,169,59,.18);} 50% { box-shadow: 0 0 0 6px rgba(242,169,59,.06);} }
+  #log { background: #0b0d10; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font-size: 12px; max-height: 240px; overflow: auto; white-space: pre-wrap; color: var(--mut); margin: 0; }
+  .downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 14px; }
+  .dl { border: 1px solid var(--line-2); border-radius: 10px; padding: 16px; background: var(--panel-2); display: flex; flex-direction: column; gap: 6px; }
+  .dl.primary { border-color: rgba(242,169,59,.55); background: linear-gradient(180deg, rgba(242,169,59,.08), transparent); }
+  .dl b { font: 600 15px var(--sans); } .dl small { font-size: 12px; }
+  .dl .act { margin-top: auto; display: flex; gap: 8px; align-items: center; padding-top: 8px; }
+  .dl .act .dlbtn { display: inline-block; background: var(--text); color: #0d0f12; border-radius: 6px; padding: 8px 14px; font: 600 13px var(--sans); text-decoration: none; } .dl .act .dlbtn:hover { background: #fff; }
+  .hist { margin-top: 10px; display: grid; gap: 6px; }
+  .hist .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); font-size: 12.5px; }
+  .hist .row b { font: 600 14px var(--sans); color: var(--text); } .hist .row .sp { flex: 1; }
+  .hist .row button { background: transparent; color: var(--text); border: 1px solid var(--line-2); border-radius: 6px; padding: 6px 10px; font: 500 12px var(--sans); } .hist .row button:hover { border-color: var(--amber); }
+  .empty { color: var(--dim); font-size: 12.5px; padding: 8px 0; }
+  .report { margin-top: 12px; font-size: 12px; color: var(--mut); white-space: pre-wrap; background: #0b0d10; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; max-height: 320px; overflow: auto; }
+  .install ol { margin: 0; padding-left: 20px; color: var(--mut); } .install li { margin: 6px 0; } .install b { color: var(--text); }
+  .foot { margin-top: 28px; color: var(--dim); font-size: 12px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>html<em>2</em>plugin</h1>
+      <p>Paste the page you'd put in CodePen, send it to the forge, download. Tested macOS <b>VST3</b> (Cubase) and <b>AU</b> (Logic).</p>
+    </div>
+    <span class="pill" id="connpill">checking the forge…</span>
+  </header>
+
+  <section class="panel">
+    <h2><span class="n">1</span> Paste the plugin page</h2>
+    <div class="grid" style="margin-bottom:12px">
+      <div>
+        <label>Plugin name <small>(file name in the repo; letters, digits, hyphens)</small></label>
+        <input id="slug" placeholder="auto-filled from the page &lt;title&gt;" autocomplete="off" spellcheck="false">
+      </div>
+      <div>
+        <label>…or a page URL instead of pasting <small>(leave empty when pasting)</small></label>
+        <input id="url" placeholder="https://codepen.io/you/pen/abcdef" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+    <label>Full HTML (everything you would paste into CodePen's HTML panel, worklet included)</label>
+    <textarea id="html" placeholder="<!doctype html> …" spellcheck="false"></textarea>
+    <div id="precheck"></div>
+    <div class="toolbar">
+      <button class="btn" id="go">Send to the forge</button>
+      <button class="btn ghost" id="clear">Clear</button>
+      <span class="mut">No token. The page is copied to your clipboard and GitHub's own editor opens with the file name filled in; you paste and click Commit. The build then runs on Apple hardware in GitHub Actions, about 9–12 minutes.</span>
+    </div>
+    <div class="handoff" id="handoff" style="display:none"></div>
+  </section>
+
+  <section class="panel" id="status" style="display:none">
+    <h2><span class="n">▸</span> Build <span class="mut" id="runlink"></span></h2>
+    <div class="steps" id="steps"></div>
+    <pre id="log"></pre>
+    <div id="downloads"></div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="n">2</span> Builds <span class="mut" style="font:400 12px var(--mono)">every successful build, newest first</span> <span class="sp" style="flex:1"></span><button class="btn ghost" id="refresh" style="padding:6px 10px;font-size:12px">Refresh</button></h2>
+    <div class="hist" id="hist"><div class="empty">loading…</div></div>
+  </section>
+
+  <section class="panel install">
+    <h2><span class="n">3</span> Installing on your Mac</h2>
+    <ol>
+      <li>Download <b>Both in one .pkg</b> (or VST3-only for Cubase, AU-only for Logic).</li>
+      <li>In Downloads, <b>right-click the .pkg → Open</b>, then <b>Open</b> on the warning. macOS 15: double-click, get refused, then System Settings → Privacy &amp; Security → <b>Open Anyway</b>, and open it again. Once per plugin.</li>
+      <li>Continue, Install, password. The installer strips quarantine, re-signs the bundles on your Mac and resets the AU cache. No Terminal.</li>
+      <li>Open Logic or Cubase. If Logic had a failed copy listed before, Plug-in Manager → Reset &amp; Rescan Selection once.</li>
+    </ol>
+    <p class="mut" style="margin:10px 0 0;font-size:12.5px">Don't drag the .vst3.zip / .component.zip into the plug-in folders: that keeps the quarantine flag on and brings the Terminal fix back. Always the .pkg. The warning in step 2 only disappears with an Apple Developer ID (see <a href="https://github.com/robertcossey19/html2plugin/blob/main/SIGNING.md" target="_blank" rel="noopener">SIGNING.md</a>).</p>
+  </section>
+
+  <p class="foot">
+    Reads use GitHub's public API without a token: 60 requests an hour from your network. If that runs out mid-build, the page switches to tag watching through jsDelivr and the release link; the build itself is unaffected.
+    If a plugin sounds like a straight wire, read <code>~/Library/Logs/html2plugin/&lt;name&gt;.log</code>.
+  </p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const slugify = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+const REPO = 'robertcossey19/html2plugin', BRANCH = 'main';
+const RAW = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/`;
+const MAX_PREFILL_URL = 6000; // GitHub rejects very long URLs; above this the content travels on the clipboard
+
+/* ---------- GitHub reads (public repo, no token) ---------- */
+let rateLimitedUntil = 0; const etags = new Map();
+async function gh(path) {
+  const headers = { Accept: 'application/vnd.github+json' }; const cached = etags.get(path);
+  if (cached) headers['If-None-Match'] = cached.etag;
+  const r = await fetch('https://api.github.com' + path, { headers });
+  if (r.status === 304 && cached) return cached.body;
+  if (r.status === 403 || r.status === 429) {
+    const reset = Number(r.headers.get('x-ratelimit-reset') || 0) * 1000;
+    if (r.headers.get('x-ratelimit-remaining') === '0' || r.status === 429) { rateLimitedUntil = reset || (Date.now() + 15 * 60000); throw Object.assign(new Error('GitHub API hourly quota reached from this network'), { rateLimited: true }); }
+  }
+  if (!r.ok) throw Object.assign(new Error(`${path} → ${r.status}`), { status: r.status });
+  const body = await r.json(); const et = r.headers.get('etag'); if (et) etags.set(path, { etag: et, body });
+  return body;
+}
+async function rawText(rel) { const r = await fetch(RAW + rel + '?t=' + Date.now(), { cache: 'no-store' }); if (r.status === 404) return null; if (!r.ok) throw new Error(`raw ${rel} → ${r.status}`); return r.text(); }
+async function jsdTags() { // tag list with CORS and no GitHub quota (jsDelivr caches it for ~5 minutes)
+  try { const j = await (await fetch(`https://data.jsdelivr.com/v1/packages/gh/${REPO}`, { cache: 'no-store' })).json(); return (j.versions || []).map(v => v.version).filter(v => /-build-\d+$/.test(v)); } catch (e) { return []; }
+}
+const buildNo = t => Number(t.split('-').pop()) || 0;
+async function tagExists(tag) { // jsDelivr serves any git tag with CORS and no GitHub quota
+  try { const r = await fetch(`https://cdn.jsdelivr.net/gh/${REPO}@${encodeURIComponent(tag)}/README.md`, { method: 'HEAD', cache: 'no-store' }); return r.ok; } catch (e) { return false; }
+}
+function setConn(ok, msg) { $('connpill').className = 'pill ' + (ok ? 'ok' : 'bad'); $('connpill').textContent = msg; }
+(async () => {
+  try { const t = await rawText('.github/workflows/forge.yml'); if (!t) throw new Error('forge.yml missing'); setConn(true, 'forge reachable · ' + REPO); }
+  catch (e) { setConn(false, 'cannot reach the repo: ' + e.message); }
+})();
+loadHistory();
+
+/* ---------- paste pre-check ---------- */
+const store = (() => { try { const st = window['local' + 'Storage']; st.setItem('h2p_probe', '1'); st.removeItem('h2p_probe'); return st; } catch (e) { const m = {}; return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } }; } })();
+$('slug').value = store.getItem('h2p_slug') || ''; $('slug').addEventListener('input', () => store.setItem('h2p_slug', $('slug').value));
+$('clear').onclick = () => { $('html').value = ''; $('url').value = ''; $('slug').value = ''; $('precheck').textContent = ''; $('handoff').style.display = 'none'; };
+$('html').addEventListener('input', () => {
+  const h = $('html').value; const notes = [];
+  if (!h.trim()) { $('precheck').textContent = ''; return; }
+  if (!/registerProcessor\s*\(/.test(h)) notes.push(['bad', 'no registerProcessor( found — the AudioWorklet module must be inline in the page (template literal, Blob or <script type="worklet">)']);
+  if (!/addModule\s*\(/.test(h)) notes.push(['bad', 'no audioWorklet.addModule( call found']);
+  if (/createScriptProcessor\s*\(/.test(h)) notes.push(['bad', 'uses ScriptProcessorNode — not supported; port the processing to an AudioWorkletProcessor first']);
+  const ext = (h.match(/<script\b[^>]*src=["'](https?:[^"']+)["']/gi) || []).map(x => x.match(/src=["']([^"']+)/)[1]);
+  if (ext.length) notes.push(['', `${ext.length} external script(s) will be inlined at build time: ${ext.join(', ')}`]);
+  const n = (h.match(/parameterDescriptors/g) || []).length; if (n) notes.push(['', `parameterDescriptors present (${n})`]);
+  if (/getUserMedia\s*\(/.test(h)) notes.push(['', 'microphone input → plugin input (handled)']);
+  if (/decodeAudioData\s*\(/.test(h)) notes.push(['warn', 'decodeAudioData: WAV only inside the plugin (no mp3/aac)']);
+  notes.push(['', `${(h.length / 1024).toFixed(0)} KB`]);
+  $('precheck').innerHTML = notes.map(([c, t]) => `<div class="${c}">• ${esc(t)}</div>`).join('');
+  if (!$('slug').value) { const t = (h.match(/<title>([^<]*)<\/title>/i) || [])[1]; if (t) { $('slug').value = slugify(t.split(/[—|–]| - /)[0]); store.setItem('h2p_slug', $('slug').value); } }
+});
+
+/* ---------- clipboard + download helpers ---------- */
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); return true; } catch (e) { }
+  try { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0'; document.body.appendChild(ta); ta.focus(); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok; } catch (e) { return false; }
+}
+function downloadFile(name, content) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
+
+/* ---------- build ---------- */
+const STEPS = [
+  ['commit', 'commit to inbox/'], ['forge', 'forge (headless boot, worklet capture, knobs)'], ['build', 'compile universal VST3 + AU'],
+  ['sign', 'sign + package .pkg'], ['install', 'install + auval'], ['pluginval', 'pluginval strictness 10'], ['hosttest', 'HostTest vs browser golden master'], ['release', 'publish release']
+];
+const STEP_MATCH = { build: /Configure \+ build/i, sign: /Sign|Package/i, install: /Install like the user|auval/i, pluginval: /pluginval/i, hosttest: /HostTest/i, release: /Publish release/i };
+function renderSteps(state) { $('steps').innerHTML = STEPS.map(([k, label]) => `<div class="step ${state[k] || ''}"><i></i>${esc(label)}</div>`).join(''); }
+const log = (m, cls) => { const p = $('log'); p.innerHTML += `<span class="${cls || ''}">${esc(m)}</span>\n`; p.scrollTop = p.scrollHeight; };
+let watchGen = 0; // a newer "I committed it" supersedes an older watch
+
+$('go').onclick = async () => {
+  const slug = slugify($('slug').value); let html = $('html').value; const url = $('url').value.trim();
+  if (!slug) return alert('Give the plugin a name (letters, digits, hyphens).');
+  if (!html.trim() && !url) return alert('Paste the HTML or give a page URL.');
+  const useUrl = !html.trim(); const rel = `inbox/${slug}.${useUrl ? 'url' : 'html'}`; let content = useUrl ? url + '\n' : html;
+  $('go').disabled = true; const box = $('handoff'); box.style.display = 'block'; box.innerHTML = '<span class="mut">checking the repo…</span>';
+  try {
+    // baseline before the commit: newest run number + the newest tag for this plugin, so the new build is recognised without knowing the commit sha
+    let baseRun = 0, baseBuild = 0, apiOk = true;
+    try { const rs = await gh(`/repos/${REPO}/actions/runs?per_page=1`); baseRun = ((rs.workflow_runs || [])[0] || {}).run_number || 0; } catch (e) { apiOk = !e.rateLimited; }
+    try { const tags = await gh(`/repos/${REPO}/git/matching-refs/tags/${slug}-build-`); baseBuild = Math.max(0, ...tags.map(t => buildNo(t.ref))); } catch (e) { if (e.status !== 404) apiOk = apiOk && !e.rateLimited; }
+    if (!apiOk) baseBuild = Math.max(baseBuild, ...(await jsdTags()).filter(t => t.startsWith(slug + '-build-')).map(buildNo)); // quota gone: baseline from the tag list instead
+    const existing = await rawText(rel);
+    if (existing !== null && existing === content) content += `\n<!-- html2plugin: resubmitted ${new Date().toISOString()} -->\n`; // GitHub refuses a commit with no change
+    const mode = existing !== null ? 'edit' : 'new';
+    let link = mode === 'edit' ? `https://github.com/${REPO}/edit/${BRANCH}/${rel}` : `https://github.com/${REPO}/new/${BRANCH}/inbox?filename=${encodeURIComponent(slug + (useUrl ? '.url' : '.html'))}`;
+    const prefill = mode === 'new' && (link + '&value=' + encodeURIComponent(content)).length <= MAX_PREFILL_URL;
+    if (prefill) link += '&value=' + encodeURIComponent(content);
+    const copied = await copyText(content);
+    box.innerHTML = `
+      <b class="hi">${mode === 'edit' ? `Replacing inbox/${esc(slug)}.${useUrl ? 'url' : 'html'}` : `Creating inbox/${esc(slug)}.${useUrl ? 'url' : 'html'}`}</b>
+      <div class="mut" style="margin-top:4px">${copied ? 'The page is on your clipboard.' : '<span class="warn">Clipboard blocked by the browser — use "Download the file" and drag it onto GitHub\'s upload page instead.</span>'}</div>
+      <ol>
+        <li><a class="btn" id="openGh" href="${esc(link)}" target="_blank" rel="noopener">Open GitHub's editor ↗</a> <span class="mut">(you're already logged in there; no token involved)</span></li>
+        <li>${prefill ? 'The file is already filled in.' : mode === 'edit' ? 'Click in the editor, <kbd>⌘A</kbd> then <kbd>⌘V</kbd>.' : 'Click in the empty editor and <kbd>⌘V</kbd>.'} The file name must read <b class="hi">${esc(slug)}.${useUrl ? 'url' : 'html'}</b>.</li>
+        <li>Top right: <b class="hi">Commit changes…</b> → <b class="hi">Commit directly to the main branch</b> → Commit.</li>
+        <li>Come back here and press <button class="btn" id="committed" style="padding:6px 12px;font-size:13px">I committed it — watch the build</button></li>
+      </ol>
+      <div class="mut" style="margin-top:8px;font-size:12px">Plan B: <a href="#" id="dlfile">Download the file</a> and drop it on <a href="https://github.com/${REPO}/upload/${BRANCH}/inbox" target="_blank" rel="noopener">the upload page ↗</a>, then Commit. Either way the build starts by itself.</div>`;
+    $('dlfile').onclick = ev => { ev.preventDefault(); downloadFile(slug + (useUrl ? '.url' : '.html'), content); };
+    $('committed').onclick = () => { $('committed').disabled = true; watchBuild(slug, baseRun, baseBuild, apiOk); };
+  } catch (e) { box.innerHTML = `<span class="bad">${esc(e.message || e)}</span>`; }
+  $('go').disabled = false;
+};
+
+async function watchBuild(slug, baseRun, baseBuild, apiOk) {
+  const gen = ++watchGen; const stale = () => gen !== watchGen;
+  $('status').style.display = 'block'; $('log').textContent = ''; $('downloads').innerHTML = ''; $('runlink').innerHTML = `<a href="https://github.com/${REPO}/actions" target="_blank" rel="noopener">actions ↗</a>`;
+  const state = { commit: 'ok', forge: 'run' }; renderSteps(state);
+  let degraded = !apiOk || Date.now() < rateLimitedUntil, run = null, rel = null;
+  const degrade = e => { degraded = true; log(e.message + ' — switching to tag watching (no live steps); the build keeps running', 'hi'); };
+  try {
+    // 1) find the run: newest push run on main that is newer than the baseline (GitHub's web commit message is "Create <slug>.html" / "Update <slug>.html")
+    for (let i = 0; i < 16 && !run && !degraded; i++) {
+      await sleep(i ? 15000 : 4000); if (stale()) return;
+      try {
+        const rs = (await gh(`/repos/${REPO}/actions/runs?branch=${BRANCH}&event=push&per_page=5`)).workflow_runs || [];
+        const fresh = rs.filter(r => r.run_number > baseRun);
+        run = fresh.find(r => ((r.head_commit || {}).message || '').toLowerCase().includes(slug)) || fresh.find(r => ((r.head_commit || {}).message || '').includes('inbox/')) || fresh[0] || null;
+        if (!run && i === 3) log('no new run yet — did the commit go through? (the editor tab shows the file in inbox/ when it did)', 'warn');
+      } catch (e) { if (e.rateLimited) degrade(e); else log(e.message, 'bad'); }
+    }
+    if (run) { $('runlink').innerHTML = `<a href="${run.html_url}" target="_blank" rel="noopener">run #${run.run_number} ↗</a>`; log(`run #${run.run_number} started (${(run.head_commit || {}).message || 'commit'})`); }
+    else if (!degraded) throw new Error('no workflow run appeared in 4 minutes — open the actions page ↗; if the commit is there and nothing ran, forge.yml is disabled');
+
+    // 2) follow the steps: one request a minute keeps a whole build inside GitHub's 60/hour anonymous budget; 304 replies are free
+    let done = false, lastMsg = '', strikes = 0;
+    while (!done) {
+      await sleep(60000); if (stale()) return;
+      if (!degraded) {
+        try {
+          const jobs = (await gh(`/repos/${REPO}/actions/runs/${run.id}/jobs`)).jobs || [];
+          const forge = jobs.find(j => j.name === 'forge'), mac = jobs.find(j => j.name.startsWith('mac') && j.name.includes(slug)) || jobs.find(j => j.name.startsWith('mac'));
+          const cls = j => j.status === 'completed' ? (j.conclusion === 'success' ? 'ok' : (j.conclusion === 'skipped' ? 'skip' : 'bad')) : 'run';
+          if (forge) state.forge = cls(forge);
+          if (mac) {
+            for (const [k, rx] of Object.entries(STEP_MATCH)) {
+              const steps = (mac.steps || []).filter(s => rx.test(s.name)); if (!steps.length) continue;
+              if (steps.some(s => s.status === 'in_progress')) state[k] = 'run';
+              else if (steps.every(s => s.status === 'completed')) state[k] = steps.every(s => s.conclusion === 'success' || s.conclusion === 'skipped') ? (steps.every(s => s.conclusion === 'skipped') ? 'skip' : 'ok') : 'bad';
+              else if (steps.some(s => s.status === 'completed' && s.conclusion === 'failure')) state[k] = 'bad';
+            }
+            const cur = (mac.steps || []).find(s => s.status === 'in_progress'); const msg = cur ? cur.name : (mac.status === 'queued' ? 'waiting for a macOS runner (can take a few minutes; GitHub cancels after a long wait — Re-run from the run page if that happens)' : mac.status);
+            if (msg !== lastMsg) { lastMsg = msg; log(msg); }
+          } else if (forge && forge.status === 'completed' && lastMsg !== 'queued') { lastMsg = 'queued'; log(forge.conclusion === 'success' ? 'forge done, waiting for the macOS job' : `forge ${forge.conclusion}`); }
+          renderSteps(state);
+          if (jobs.length && jobs.every(j => j.status === 'completed')) {
+            done = true;
+            const failed = jobs.some(j => j.conclusion && !['success', 'skipped'].includes(j.conclusion));
+            if (failed) { for (const k of Object.keys(state)) if (state[k] === 'run') state[k] = 'bad'; renderSteps(state); log(`run failed. Open the run ↗ — the "${slug}-test-logs" artifact has auval / pluginval / HostTest output and the plugin log.`, 'bad'); }
+            else rel = await findRelease(`${slug}-build-${run.run_number}`, 8);
+          }
+        } catch (e) { if (e.rateLimited) degrade(e); else { log(e.message, 'bad'); if (++strikes > 5) throw e; } }
+      } else {
+        // quota gone: probe the next few possible tags through jsDelivr; retry the API once its window resets
+        if (Date.now() >= rateLimitedUntil && rateLimitedUntil) { degraded = false; log('GitHub quota reset — live steps back'); if (!run) return watchBuild(slug, baseRun, baseBuild, true); continue; }
+        const start = Math.max(baseBuild, baseRun), hits = (await jsdTags()).filter(t => t.startsWith(slug + '-build-')).map(buildNo).filter(n => n > start);
+        if (!hits.length) for (let n = start + 1; n <= start + 8; n++) if (await tagExists(`${slug}-build-${n}`)) hits.push(n); // the list lags a few minutes; probe the next numbers directly
+        if (hits.length) { done = true; const tag = `${slug}-build-${Math.max(...hits)}`; log(`release tag ${tag} appeared`); rel = (await findRelease(tag, 2)) || { tag_name: tag, html_url: `https://github.com/${REPO}/releases/tag/${tag}`, assets: [] }; for (const k of STEPS.map(x => x[0])) state[k] = 'ok'; }
+        else if (lastMsg !== 'building') { lastMsg = 'building'; log(`building — checking for a new ${slug}-build-N tag every minute; the release page is https://github.com/${REPO}/releases`); }
+      }
+    }
+    if (rel) { state.release = 'ok'; renderSteps(state); log(`release ready: ${rel.tag_name}`, 'ok'); $('downloads').innerHTML = downloadsHtml(rel); wireDownloads($('downloads'), rel); loadHistory(); }
+    else if (state.hosttest === 'ok') log('build passed but the release is not visible yet — hit Refresh under Builds in a minute', 'hi');
+  } catch (e) { if (stale()) return; log(String(e.message || e), 'bad'); for (const k of Object.keys(state)) if (state[k] === 'run') state[k] = 'bad'; renderSteps(state); }
+}
+async function findRelease(tag, tries) {
+  for (let i = 0; i < tries; i++) {
+    try { return await gh(`/repos/${REPO}/releases/tags/${tag}`); } catch (e) { if (e.rateLimited) break; }
+    await sleep(5000);
+  }
+  return null;
+}
+
+/* ---------- downloads (public release assets: plain links) ---------- */
+function pick(rel, rx) { return (rel.assets || []).find(a => rx.test(a.name)); }
+function card(a, title, sub, primary) {
+  if (!a) return '';
+  return `<div class="dl ${primary ? 'primary' : ''}"><b>${esc(title)}</b><small>${esc(sub)}</small><small class="dim">${esc(a.name)} · ${(a.size / 1048576).toFixed(1)} MB</small>
+    <div class="act"><a class="dlbtn" href="${a.browser_download_url}" download>Download</a></div></div>`;
+}
+function downloadsHtml(rel) {
+  const both = pick(rel, /Installer-VST3\+AU\.pkg$/), vst = pick(rel, /VST3-Installer\.pkg$/), au = pick(rel, /AU-Installer\.pkg$/), app = pick(rel, /Standalone\.app\.zip$/), rep = pick(rel, /REPORT\.md$/), sums = pick(rel, /SHA256SUMS/);
+  const signing = ((rel.body || '').match(/Signing:[^\n]*/) || [])[0];
+  const cards = [card(both, 'Both in one .pkg', 'installs VST3 + AU together', true), card(vst, 'VST3 installer', 'Cubase, Nuendo, Reaper, Ableton, Studio One'), card(au, 'AU installer', 'Logic Pro, GarageBand, MainStage'), card(app, 'Standalone app', 'runs on its own with your audio interface')].join('');
+  return `<div class="downloads">${cards || `<div class="empty">Assets are listed on the <a href="${rel.html_url}" target="_blank" rel="noopener">release page ↗</a>.</div>`}</div>
+    <div class="mut" style="margin-top:10px;font-size:12px">${signing ? esc(signing) + ' · ' : ''}${rep ? `<a href="${rep.browser_download_url}" target="_blank" rel="noopener">REPORT.md</a> · ` : ''}${sums ? `<a href="${sums.browser_download_url}" target="_blank" rel="noopener">SHA256SUMS.txt</a> · ` : ''}<a href="${rel.html_url}" target="_blank" rel="noopener">release page ↗</a></div>`;
+}
+function wireDownloads() { }
+
+/* ---------- history ---------- */
+async function loadHistory() {
+  try {
+    const rels = await gh(`/repos/${REPO}/releases?per_page=30`);
+    if (!rels.length) { $('hist').innerHTML = '<div class="empty">No builds yet.</div>'; return; }
+    $('hist').innerHTML = rels.map(r => { const m = r.tag_name.match(/^(.*)-build-(\d+)$/) || [, r.tag_name, '']; const d = r.published_at || r.created_at ? new Date(r.published_at || r.created_at) : null;
+      return `<div class="row" data-id="${r.id}"><b>${esc(m[1])}</b><span class="mut">build ${esc(m[2])}${d ? ` · ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</span><span class="sp"></span><button data-open="${r.id}">Downloads</button></div><div class="rowbody" id="rb-${r.id}" style="display:none;margin:-2px 0 6px"></div>`; }).join('');
+    $('hist').querySelectorAll('button[data-open]').forEach(b => b.onclick = () => {
+      const rel = rels.find(x => String(x.id) === b.dataset.open); const box = $('rb-' + rel.id); const open = box.style.display !== 'none'; box.style.display = open ? 'none' : 'block';
+      if (!open) box.innerHTML = downloadsHtml(rel);
+    });
+  } catch (e) {
+    const tags = e.rateLimited ? await jsdTags() : [];
+    if (!tags.length) { $('hist').innerHTML = `<div class="empty">${esc(e.message)} — <a href="https://github.com/${REPO}/releases" target="_blank" rel="noopener">open the releases page ↗</a></div>`; return; }
+    $('hist').innerHTML = `<div class="empty">${esc(e.message)}; showing the tag list instead — downloads are on each release page.</div>` + tags.sort((a, b) => buildNo(b) - buildNo(a)).map(t => { const m = t.match(/^(.*)-build-(\d+)$/); return `<div class="row"><b>${esc(m[1])}</b><span class="mut">build ${esc(m[2])}</span><span class="sp"></span><a href="https://github.com/${REPO}/releases/tag/${esc(t)}" target="_blank" rel="noopener">release page ↗</a></div>`; }).join('');
+  }
+}
+$('refresh').onclick = () => { $('hist').innerHTML = '<div class="empty">loading…</div>'; loadHistory(); };
+</script>
+</body>
+</html>

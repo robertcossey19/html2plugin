@@ -35,3 +35,12 @@ If a plugin loads but sounds like a straight wire, the JS engine failed and the 
 - CPU: JavaScript in-process. With JIT it is in the same ballpark as the browser; hosts without the `com.apple.security.cs.allow-jit` entitlement run the JSC interpreter (CI prints both numbers). For CPU-critical plugins, hand-port the worklet to C++ (see the `html-plugin-to-mac-vst-au` skill); this generator is the fidelity path.
 - The .pkg installers carry a postinstall that does the usual terminal ritual as root: `xattr -cr`, ad-hoc `codesign --force --deep -s -` (skipped when the bundle is Developer ID signed), AU cache wipe + `killall AudioComponentRegistrar`. CI installs from a quarantined .pkg and fails if the installed bundles are not clean and valid. The one thing this cannot remove is Gatekeeper's prompt on the .pkg itself (right-click → Open, or System Settings → Privacy & Security → Open Anyway on Sequoia); only a Developer ID does that.
 - Signing is ad-hoc until the Apple secrets in [SIGNING.md](SIGNING.md) are set; with them every build is Developer ID signed, notarized, stapled and Gatekeeper-checked (`spctl -a -t install`) before release.
+
+### CodePen edition (no server at all)
+
+`web/codepen/index.html` is the same front end with the backend removed, so it runs from CodePen or any static host.
+Because a browser cannot write to GitHub without a token, the page hands the file to GitHub's own editor instead:
+Send to the forge → copies the page to the clipboard and opens `github.com/.../new/main/inbox?filename=<slug>.html`
+(prefilled when small, otherwise ⌘V) → Commit → the page watches the run through the public API (one request a minute,
+inside the anonymous 60/hour budget) and lists the .pkg downloads. If that budget is gone it falls back to jsDelivr's
+tag list and the release page; the build itself never depends on the page.
