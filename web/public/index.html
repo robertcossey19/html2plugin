@@ -42,11 +42,6 @@
   .grid { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; }
   @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } .wrap { padding: 24px 16px 60px; } }
 
-  details.setup summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; }
-  details.setup summary::-webkit-details-marker { display: none; }
-  details.setup summary .chev { color: var(--dim); transition: transform .2s; } details.setup[open] summary .chev { transform: rotate(90deg); }
-  .setup-body { margin-top: 14px; }
-  ol.how { margin: 10px 0 0; padding-left: 18px; color: var(--mut); font-size: 12.5px; } ol.how li { margin: 3px 0; } ol.how code { color: var(--text); }
 
   .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
   .btn { background: var(--amber); color: #1a1205; border: 0; border-radius: 8px; padding: 12px 18px; font: 600 14px var(--sans); letter-spacing: .01em; transition: transform .08s, filter .15s; }
@@ -72,8 +67,8 @@
   .dl.primary { border-color: rgba(242,169,59,.55); background: linear-gradient(180deg, rgba(242,169,59,.08), transparent); }
   .dl b { font: 600 15px var(--sans); } .dl small { font-size: 12px; }
   .dl .act { margin-top: auto; display: flex; gap: 8px; align-items: center; padding-top: 8px; }
-  .dl .act button { background: var(--text); color: #0d0f12; border: 0; border-radius: 6px; padding: 8px 12px; font: 600 13px var(--sans); }
-  .dl .act button:hover { background: #fff; } .dl .act button[disabled] { opacity: .6; cursor: progress; }
+  .dl .act .dlbtn { display: inline-block; background: var(--text); color: #0d0f12; border-radius: 6px; padding: 8px 14px; font: 600 13px var(--sans); text-decoration: none; }
+  .dl .act .dlbtn:hover { background: #fff; text-decoration: none; }
   .hist { margin-top: 10px; display: grid; gap: 6px; }
   .hist .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); font-size: 12.5px; }
   .hist .row b { font: 600 14px var(--sans); color: var(--text); }
@@ -90,39 +85,10 @@
   <header>
     <div>
       <h1>html<em>2</em>plugin</h1>
-      <p>Paste the page you'd put in CodePen. Get a tested macOS <b>VST3</b> (Cubase) and <b>AU</b> (Logic).</p>
+      <p>Paste the page you'd put in CodePen, hit Generate, download. Tested macOS <b>VST3</b> (Cubase) and <b>AU</b> (Logic).</p>
     </div>
-    <span class="pill" id="connpill">not connected</span>
+    <span class="pill" id="connpill">checking the forge…</span>
   </header>
-
-  <section class="panel">
-    <details class="setup" id="setup">
-      <summary><h2 style="margin:0"><span class="n">0</span> One-time setup <span class="chev">▶</span></h2></summary>
-      <div class="setup-body">
-        <div class="grid">
-          <div>
-            <label>GitHub repository (owner/name)</label>
-            <input id="repo" placeholder="robertcossey19/html2plugin" autocomplete="off" spellcheck="false">
-          </div>
-          <div>
-            <label>Fine-grained personal access token <small>(saved in this browser only, sent only to api.github.com)</small></label>
-            <input id="token" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
-          </div>
-        </div>
-        <ol class="how">
-          <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com → Settings → Developer settings → Fine-grained tokens → Generate</a>.</li>
-          <li>Repository access: <code>Only select repositories</code> → the repo above.</li>
-          <li>Permissions: <code>Contents: Read and write</code>, <code>Actions: Read-only</code> (Metadata is added automatically). Nothing else.</li>
-          <li>Paste it here. Click <b>Test connection</b>.</li>
-        </ol>
-        <div class="toolbar">
-          <button class="btn ghost" id="test">Test connection</button>
-          <button class="btn ghost" id="forget">Forget token</button>
-          <span class="mut" id="testmsg"></span>
-        </div>
-      </div>
-    </details>
-  </section>
 
   <section class="panel">
     <h2><span class="n">1</span> Paste the plugin page</h2>
@@ -142,7 +108,7 @@
     <div class="toolbar">
       <button class="btn" id="go">Generate VST3 + AU</button>
       <button class="btn ghost" id="clear">Clear</button>
-      <span class="mut">Takes about 9–12 minutes on Apple hardware in GitHub Actions. You can close this tab; the build shows up under Builds below.</span>
+      <span class="mut">No login, no token. Takes about 9–12 minutes on Apple hardware in GitHub Actions; you can close this tab and the build shows up under Builds below.</span>
     </div>
   </section>
 
@@ -155,7 +121,7 @@
 
   <section class="panel">
     <h2><span class="n">3</span> Builds <span class="mut" style="font:400 12px var(--mono)">every successful build, newest first</span></h2>
-    <div class="hist" id="hist"><div class="empty">Connect first (step 0) to list builds.</div></div>
+    <div class="hist" id="hist"><div class="empty">loading…</div></div>
   </section>
 
   <p class="foot">
@@ -166,45 +132,51 @@
 </div>
 
 <script>
+  window.__API_BASE__ = '__PORT_8000__';
+</script>
+<script>
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const slugify = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+const REPO = 'robertcossey19/html2plugin';
 
-/* ---------- persisted settings (browser storage when available; sandboxed previews fall back to this tab's memory) ---------- */
-const store = (() => { try { const st = window['local' + 'Storage']; st.setItem('h2p_probe', '1'); st.removeItem('h2p_probe'); return st; } catch (e) { const m = {}; return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } }; } })();
-for (const k of ['repo', 'token', 'slug']) { $(k).value = store.getItem('h2p_' + k) || ''; $(k).addEventListener('input', () => store.setItem('h2p_' + k, $(k).value)); }
-if (!$('repo').value) { $('repo').value = 'robertcossey19/html2plugin'; store.setItem('h2p_repo', $('repo').value); }
-if (!$('token').value) $('setup').open = true;
-$('forget').onclick = () => { store.removeItem('h2p_token'); $('token').value = ''; setConn(false, 'token removed'); };
-
-/* ---------- GitHub API ---------- */
-const repo = () => $('repo').value.trim();
-async function gh(path, opts = {}, raw = false) {
-  const headers = Object.assign({ Authorization: 'Bearer ' + $('token').value.trim(), Accept: raw ? 'application/octet-stream' : 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, opts.headers || {});
-  const r = await fetch('https://api.github.com' + path, Object.assign({}, opts, { headers }));
-  if (!r.ok) { let t = ''; try { t = (await r.text()).slice(0, 300); } catch (e) { } throw new Error(`${opts.method || 'GET'} ${path} → ${r.status} ${t}`); }
-  if (raw) return r;
-  return r.status === 204 ? null : r.json();
+/* ---------- backend (commits the page into inbox/ with its own repo-scoped deploy key) ---------- */
+const localHostnames = new Set(['localhost', '127.0.0.1', '[::1]']);
+const rawApiBase = window.__API_BASE__;
+const unresolvedBase = rawApiBase.startsWith('__PORT_');
+if (unresolvedBase && !localHostnames.has(location.hostname)) console.error('backend placeholder not rewritten');
+const API = unresolvedBase ? 'http://localhost:8000' : rawApiBase;
+async function api(path, opts = {}) {
+  const r = await fetch(API + path, Object.assign({ credentials: 'same-origin' }, opts, { headers: Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {}) }));
+  const ct = r.headers.get('content-type') || '';
+  const body = ct.includes('json') ? await r.json() : await r.text();
+  if (!r.ok) throw new Error((body && body.error) || `${path} → ${r.status}`);
+  return body;
 }
-const b64 = s => btoa(unescape(encodeURIComponent(s)));
 
-function setConn(ok, msg) { $('connpill').className = 'pill ' + (ok ? 'ok' : 'bad'); $('connpill').textContent = ok ? ('connected · ' + repo()) : (msg || 'not connected'); }
-async function testConnection(quiet) {
-  if (!$('token').value.trim() || !repo()) { setConn(false); return false; }
-  try {
-    const r = await gh(`/repos/${repo()}`);
-    const perm = r.permissions || {};
-    if (!perm.push) throw new Error('token has no write access to this repo (needs Contents: Read and write)');
-    setConn(true); if (!quiet) $('testmsg').textContent = `ok — ${r.full_name} (${r.private ? 'private' : 'public'}), default branch ${r.default_branch}`;
-    loadHistory(); return true;
-  } catch (e) { setConn(false, 'connection failed'); if (!quiet) $('testmsg').textContent = e.message; return false; }
+/* ---------- GitHub reads (public repo, no token; 60 requests/hour from your IP) ---------- */
+let rateLimitedUntil = 0;
+async function gh(path) {
+  const r = await fetch('https://api.github.com' + path, { headers: { Accept: 'application/vnd.github+json' } });
+  if (r.status === 403 || r.status === 429) {
+    const reset = Number(r.headers.get('x-ratelimit-reset') || 0) * 1000;
+    if (r.headers.get('x-ratelimit-remaining') === '0') { rateLimitedUntil = reset || (Date.now() + 15 * 60000); throw Object.assign(new Error('GitHub API hourly quota reached from this network'), { rateLimited: true }); }
+  }
+  if (!r.ok) throw new Error(`${path} → ${r.status}`);
+  return r.json();
 }
-$('test').onclick = () => testConnection(false);
-if ($('token').value) testConnection(true);
+function setConn(ok, msg) { $('connpill').className = 'pill ' + (ok ? 'ok' : 'bad'); $('connpill').textContent = msg; }
+async function checkBackend() {
+  try { const h = await api('/api/health'); if (!h.ok) throw new Error(h.error || 'backend not ready'); setConn(true, 'forge online · ' + h.repo); return true; }
+  catch (e) { setConn(false, 'forge offline: ' + e.message); return false; }
+}
+checkBackend(); loadHistory();
 
 /* ---------- paste pre-check ---------- */
-$('clear').onclick = () => { $('html').value = ''; $('url').value = ''; $('precheck').textContent = ''; };
+const store = (() => { try { const st = window['local' + 'Storage']; st.setItem('h2p_probe', '1'); st.removeItem('h2p_probe'); return st; } catch (e) { const m = {}; return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } }; } })();
+$('slug').value = store.getItem('h2p_slug') || ''; $('slug').addEventListener('input', () => store.setItem('h2p_slug', $('slug').value));
+$('clear').onclick = () => { $('html').value = ''; $('url').value = ''; $('slug').value = ''; $('precheck').textContent = ''; };
 $('html').addEventListener('input', () => {
   const h = $('html').value; const notes = [];
   if (!h.trim()) { $('precheck').textContent = ''; return; }
@@ -231,91 +203,98 @@ function renderSteps(state) { $('steps').innerHTML = STEPS.map(([k, label]) => `
 const log = (m, cls) => { const p = $('log'); p.innerHTML += `<span class="${cls || ''}">${esc(m)}</span>\n`; p.scrollTop = p.scrollHeight; };
 
 $('go').onclick = async () => {
-  const slug = slugify($('slug').value.trim()); let html = $('html').value; const url = $('url').value.trim();
-  if (!(await testConnection(true))) { $('setup').open = true; return alert('Connect first: repo + token in step 0.'); }
-  if (!slug) return alert('Give the plugin a name (step 1).');
+  const name = $('slug').value.trim(); const html = $('html').value; const url = $('url').value.trim();
+  if (!name) return alert('Give the plugin a name.');
   if (!html.trim() && !url) return alert('Paste the HTML or give a page URL.');
+  if (!(await checkBackend())) return alert('The forge backend is not reachable right now. Reload in a minute.');
   $('status').style.display = 'block'; $('log').textContent = ''; $('downloads').innerHTML = ''; $('runlink').textContent = ''; $('go').disabled = true;
   const state = { commit: 'run' }; renderSteps(state);
   try {
-    const path = html.trim() ? `inbox/${slug}.html` : `inbox/${slug}.url`;
-    if (!html.trim()) html = url + '\n';
-    let sha; try { const cur = await gh(`/repos/${repo()}/contents/${path}`); sha = cur.sha; log(`${path} exists — replacing it`, 'hi'); } catch (e) { }
-    const commit = await gh(`/repos/${repo()}/contents/${path}`, { method: 'PUT', body: JSON.stringify({ message: `forge: ${slug}`, content: b64(html), sha }) });
-    const commitSha = commit.commit.sha; state.commit = 'ok'; state.forge = 'run'; renderSteps(state); log(`committed ${path} @ ${commitSha.slice(0, 7)}`);
+    const g = await api('/api/generate', { method: 'POST', body: JSON.stringify({ name, html, url }) });
+    const slug = g.slug, commitSha = g.sha, baseTags = new Set(g.baseTags || []);
+    state.commit = 'ok'; state.forge = 'run'; renderSteps(state); log(`committed ${g.path} @ ${commitSha.slice(0, 7)}`);
+    $('runlink').innerHTML = `<a href="https://github.com/${REPO}/actions" target="_blank" rel="noopener">actions ↗</a>`;
 
-    let run = null;
-    for (let i = 0; i < 45 && !run; i++) { await sleep(4000); const rs = await gh(`/repos/${repo()}/actions/runs?head_sha=${commitSha}&per_page=5`); run = (rs.workflow_runs || [])[0]; }
-    if (!run) throw new Error('the workflow did not start — is Actions enabled on the repo and .github/workflows/forge.yml on the default branch?');
-    $('runlink').innerHTML = `<a href="${run.html_url}" target="_blank" rel="noopener">run #${run.run_number} ↗</a>`; log(`run #${run.run_number} started`);
-
-    let done = false, lastMsg = '';
-    while (!done) {
-      await sleep(12000);
-      const r = await gh(`/repos/${repo()}/actions/runs/${run.id}`); const jobs = (await gh(`/repos/${repo()}/actions/runs/${run.id}/jobs`)).jobs || [];
-      const forge = jobs.find(j => j.name === 'forge'), mac = jobs.find(j => j.name.startsWith('mac') && j.name.includes(slug)) || jobs.find(j => j.name.startsWith('mac'));
-      const cls = j => j.status === 'completed' ? (j.conclusion === 'success' ? 'ok' : (j.conclusion === 'skipped' ? 'skip' : 'bad')) : 'run';
-      if (forge) state.forge = cls(forge);
-      if (mac) {
-        for (const [k, rx] of Object.entries(STEP_MATCH)) {
-          const steps = (mac.steps || []).filter(s => rx.test(s.name)); if (!steps.length) continue;
-          if (steps.some(s => s.status === 'in_progress')) state[k] = 'run';
-          else if (steps.every(s => s.status === 'completed')) state[k] = steps.every(s => s.conclusion === 'success' || s.conclusion === 'skipped') ? (steps.every(s => s.conclusion === 'skipped') ? 'skip' : 'ok') : 'bad';
-          else if (steps.some(s => s.status === 'completed' && s.conclusion === 'failure')) state[k] = 'bad';
-        }
-        const cur = (mac.steps || []).find(s => s.status === 'in_progress'); const msg = cur ? cur.name : (mac.status === 'queued' ? 'waiting for a macOS runner' : mac.status);
-        if (msg !== lastMsg) { lastMsg = msg; log(msg); }
-      } else if (forge && forge.status === 'completed' && forge.conclusion === 'success' && lastMsg !== 'queued') { lastMsg = 'queued'; log('forge done, waiting for the macOS job'); }
-      renderSteps(state);
-      if (r.status === 'completed') { done = true; if (r.conclusion !== 'success') { for (const k of Object.keys(state)) if (state[k] === 'run') state[k] = 'bad'; renderSteps(state); log(`run finished: ${r.conclusion}. Open the run ↗ — the "${slug}-test-logs" artifact has auval / pluginval / HostTest output and the plugin log.`, 'bad'); } }
+    // 1) find the run (API from your browser; falls back to tag detection through the backend if GitHub's hourly quota is gone)
+    let run = null, degraded = false;
+    for (let i = 0; i < 20 && !run && !degraded; i++) {
+      await sleep(i ? 8000 : 5000);
+      try { const rs = await gh(`/repos/${REPO}/actions/runs?head_sha=${commitSha}&per_page=5`); run = (rs.workflow_runs || [])[0]; }
+      catch (e) { if (e.rateLimited) { degraded = true; log(e.message + ' — switching to finished/not-finished tracking', 'hi'); } }
     }
-    const rel = await findRelease(slug, run.run_number, 6);
-    if (rel) { state.release = 'ok'; renderSteps(state); log(`release ready: ${rel.tag_name}`, 'ok'); $('downloads').innerHTML = downloadsHtml(rel, true); wireDownloads($('downloads'), rel); loadHistory(); }
+    if (run) { $('runlink').innerHTML = `<a href="${run.html_url}" target="_blank" rel="noopener">run #${run.run_number} ↗</a>`; log(`run #${run.run_number} started`); }
+    else if (!degraded) throw new Error('the workflow did not start — open the actions page ↗ and check that forge.yml is enabled');
+
+    // 2) follow the steps
+    let done = false, lastMsg = '', rel = null;
+    while (!done) {
+      await sleep(degraded ? 45000 : 30000);
+      if (!degraded) {
+        try {
+          const jobs = (await gh(`/repos/${REPO}/actions/runs/${run.id}/jobs`)).jobs || [];
+          const forge = jobs.find(j => j.name === 'forge'), mac = jobs.find(j => j.name.startsWith('mac') && j.name.includes(slug)) || jobs.find(j => j.name.startsWith('mac'));
+          const cls = j => j.status === 'completed' ? (j.conclusion === 'success' ? 'ok' : (j.conclusion === 'skipped' ? 'skip' : 'bad')) : 'run';
+          if (forge) state.forge = cls(forge);
+          if (mac) {
+            for (const [k, rx] of Object.entries(STEP_MATCH)) {
+              const steps = (mac.steps || []).filter(s => rx.test(s.name)); if (!steps.length) continue;
+              if (steps.some(s => s.status === 'in_progress')) state[k] = 'run';
+              else if (steps.every(s => s.status === 'completed')) state[k] = steps.every(s => s.conclusion === 'success' || s.conclusion === 'skipped') ? (steps.every(s => s.conclusion === 'skipped') ? 'skip' : 'ok') : 'bad';
+              else if (steps.some(s => s.status === 'completed' && s.conclusion === 'failure')) state[k] = 'bad';
+            }
+            const cur = (mac.steps || []).find(s => s.status === 'in_progress'); const msg = cur ? cur.name : (mac.status === 'queued' ? 'waiting for a macOS runner' : mac.status);
+            if (msg !== lastMsg) { lastMsg = msg; log(msg); }
+          } else if (forge && forge.status === 'completed' && lastMsg !== 'queued') { lastMsg = 'queued'; log(forge.conclusion === 'success' ? 'forge done, waiting for the macOS job' : `forge ${forge.conclusion}`); }
+          renderSteps(state);
+          const allDone = jobs.length && jobs.every(j => j.status === 'completed');
+          if (allDone) {
+            done = true;
+            const failed = jobs.some(j => j.conclusion && !['success', 'skipped'].includes(j.conclusion));
+            if (failed) { for (const k of Object.keys(state)) if (state[k] === 'run') state[k] = 'bad'; renderSteps(state); log(`run failed. Open the run ↗ — the "${slug}-test-logs" artifact has auval / pluginval / HostTest output and the plugin log.`, 'bad'); }
+            else rel = await findRelease(`${slug}-build-${run.run_number}`, 8);
+          }
+        } catch (e) { if (e.rateLimited) { degraded = true; log(e.message + ' — switching to finished/not-finished tracking', 'hi'); } else log(e.message, 'bad'); }
+      } else {
+        try {
+          const { tags } = await api(`/api/tags?slug=${slug}`); const fresh = tags.filter(t => !baseTags.has(t));
+          if (fresh.length) { done = true; const tag = fresh.sort((a, b) => Number(b.split('-').pop()) - Number(a.split('-').pop()))[0]; log(`release tag ${tag} appeared`); rel = await findRelease(tag, 3).catch(() => null) || { tag_name: tag, html_url: `https://github.com/${REPO}/releases/tag/${tag}`, assets: [] }; for (const k of STEPS.map(x => x[0])) state[k] = 'ok'; }
+          else if (lastMsg !== 'building') { lastMsg = 'building'; log('building — live steps unavailable until GitHub\'s hourly quota resets; the release will be detected when it lands'); }
+        } catch (e) { log(e.message, 'bad'); }
+      }
+    }
+    if (rel) { state.release = 'ok'; renderSteps(state); log(`release ready: ${rel.tag_name}`, 'ok'); $('downloads').innerHTML = downloadsHtml(rel); wireDownloads($('downloads'), rel); loadHistory(); }
     else if (state.hosttest === 'ok') log('build passed but the release is not visible yet — check Builds below in a minute', 'hi');
   } catch (e) { log(String(e.message || e), 'bad'); for (const k of Object.keys(state)) if (state[k] === 'run') state[k] = 'bad'; renderSteps(state); }
   $('go').disabled = false;
 };
-async function findRelease(slug, n, tries) { for (let i = 0; i < tries; i++) { try { return await gh(`/repos/${repo()}/releases/tags/${slug}-build-${n}`); } catch (e) { await sleep(5000); } } return null; }
+async function findRelease(tag, tries) { for (let i = 0; i < tries; i++) { try { return await gh(`/repos/${REPO}/releases/tags/${tag}`); } catch (e) { if (e.rateLimited) return null; await sleep(5000); } } return null; }
 
-/* ---------- downloads (fetched through the API so private repos work; falls back to the browser link) ---------- */
+/* ---------- downloads (public release assets: plain links) ---------- */
 function pick(rel, rx) { return (rel.assets || []).find(a => rx.test(a.name)); }
 function card(a, title, sub, primary) {
   if (!a) return '';
   return `<div class="dl ${primary ? 'primary' : ''}"><b>${esc(title)}</b><small>${esc(sub)}</small><small class="dim">${esc(a.name)} · ${(a.size / 1048576).toFixed(1)} MB</small>
-    <div class="act"><button data-asset="${a.id}" data-name="${esc(a.name)}">Download</button><a href="${a.browser_download_url}" target="_blank" rel="noopener"><small>browser link</small></a></div></div>`;
+    <div class="act"><a class="dlbtn" href="${a.browser_download_url}" download>Download</a></div></div>`;
 }
-function downloadsHtml(rel, withReport) {
+function downloadsHtml(rel) {
   const both = pick(rel, /Installer-VST3\+AU\.pkg$/), vst = pick(rel, /VST3-Installer\.pkg$/), au = pick(rel, /AU-Installer\.pkg$/), app = pick(rel, /Standalone\.app\.zip$/), rep = pick(rel, /REPORT\.md$/), sums = pick(rel, /SHA256SUMS/);
-  return `<div class="downloads">${card(vst, 'VST3 installer', 'Cubase, Nuendo, Reaper, Ableton, Studio One', true)}${card(au, 'AU installer', 'Logic Pro, GarageBand, MainStage', true)}${card(both, 'Both in one .pkg', 'installs VST3 + AU together')}${card(app, 'Standalone app', 'runs on its own with your audio interface')}</div>
-    <div class="mut" style="margin-top:10px;font-size:12px">${rep ? `<a href="#" data-report="${rep.id}">show REPORT.md</a> · ` : ''}${sums ? `<a href="${sums.browser_download_url}" target="_blank" rel="noopener">SHA256SUMS.txt</a> · ` : ''}<a href="${rel.html_url}" target="_blank" rel="noopener">release page ↗</a></div><div class="report" id="rep-${rel.id}" style="display:none"></div>`;
+  const cards = [card(vst, 'VST3 installer', 'Cubase, Nuendo, Reaper, Ableton, Studio One', true), card(au, 'AU installer', 'Logic Pro, GarageBand, MainStage', true), card(both, 'Both in one .pkg', 'installs VST3 + AU together'), card(app, 'Standalone app', 'runs on its own with your audio interface')].join('');
+  return `<div class="downloads">${cards || `<div class="empty">Assets are listed on the <a href="${rel.html_url}" target="_blank" rel="noopener">release page ↗</a>.</div>`}</div>
+    <div class="mut" style="margin-top:10px;font-size:12px">${rep ? `<a href="#" data-report="${rep.browser_download_url}">show REPORT.md</a> · ` : ''}${sums ? `<a href="${sums.browser_download_url}" target="_blank" rel="noopener">SHA256SUMS.txt</a> · ` : ''}<a href="${rel.html_url}" target="_blank" rel="noopener">release page ↗</a></div><div class="report" id="rep-${rel.id || 'x'}" style="display:none"></div>`;
 }
 function wireDownloads(root, rel) {
-  root.querySelectorAll('button[data-asset]').forEach(b => b.onclick = () => downloadAsset(b.dataset.asset, b.dataset.name, b, rel));
-  root.querySelectorAll('a[data-report]').forEach(a => a.onclick = async (ev) => { ev.preventDefault(); const box = root.querySelector(`#rep-${rel.id}`); box.style.display = 'block'; box.textContent = 'loading…'; try { const r = await gh(`/repos/${repo()}/releases/assets/${a.dataset.report}`, {}, true); box.textContent = await r.text(); } catch (e) { box.textContent = e.message; } });
-}
-async function downloadAsset(id, name, btn, rel) {
-  const old = btn.textContent; btn.disabled = true; btn.textContent = 'fetching…';
-  try {
-    const r = await gh(`/repos/${repo()}/releases/assets/${id}`, {}, true); const blob = await r.blob();
-    const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 10000);
-    btn.textContent = 'saved';
-  } catch (e) {
-    // CORS on the storage redirect or a private-asset hiccup: hand the browser the normal link (works when signed in to GitHub)
-    const asset = (rel.assets || []).find(x => String(x.id) === String(id)); if (asset) window.open(asset.browser_download_url, '_blank');
-    btn.textContent = 'opened in a tab';
-  }
-  setTimeout(() => { btn.disabled = false; btn.textContent = old; }, 4000);
+  root.querySelectorAll('a[data-report]').forEach(a => a.onclick = async (ev) => { ev.preventDefault(); const box = root.querySelector(`#rep-${rel.id || 'x'}`); box.style.display = 'block'; box.textContent = 'loading…'; try { box.textContent = await api(`/api/text?url=${encodeURIComponent(a.dataset.report)}`); } catch (e) { box.textContent = e.message; } });
 }
 
 /* ---------- history ---------- */
 async function loadHistory() {
   try {
-    const rels = await gh(`/repos/${repo()}/releases?per_page=30`);
+    const rels = await gh(`/repos/${REPO}/releases?per_page=30`);
     if (!rels.length) { $('hist').innerHTML = '<div class="empty">No builds yet.</div>'; return; }
     $('hist').innerHTML = rels.map(r => { const m = r.tag_name.match(/^(.*)-build-(\d+)$/) || [, r.tag_name, '']; const d = new Date(r.published_at || r.created_at);
       return `<div class="row" data-id="${r.id}"><b>${esc(m[1])}</b><span class="mut">build ${esc(m[2])} · ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span class="sp"></span><button data-open="${r.id}">Downloads</button></div><div class="rowbody" id="rb-${r.id}" style="display:none;margin:-2px 0 6px"></div>`; }).join('');
-    $('hist').querySelectorAll('button[data-open]').forEach(b => b.onclick = () => { const rel = rels.find(x => String(x.id) === b.dataset.open); const box = $('rb-' + rel.id); const open = box.style.display !== 'none'; box.style.display = open ? 'none' : 'block'; if (!open) { box.innerHTML = downloadsHtml(rel, true); wireDownloads(box, rel); } });
-  } catch (e) { $('hist').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    $('hist').querySelectorAll('button[data-open]').forEach(b => b.onclick = () => { const rel = rels.find(x => String(x.id) === b.dataset.open); const box = $('rb-' + rel.id); const open = box.style.display !== 'none'; box.style.display = open ? 'none' : 'block'; if (!open) { box.innerHTML = downloadsHtml(rel); wireDownloads(box, rel); } });
+  } catch (e) { $('hist').innerHTML = `<div class="empty">${esc(e.message)} — <a href="https://github.com/${REPO}/releases" target="_blank" rel="noopener">open the releases page ↗</a></div>`; }
 }
 </script>
 </body>

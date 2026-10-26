@@ -2,3 +2,5 @@ node_modules/
 build/
 plugins/*/build/
 *.log
+web/.secrets/
+web/work/
