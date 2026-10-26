@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Fairchild Model 670 â€” Feedback Topology, Diode-Coupled Timing Network</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;1,700&family=Barlow:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --chassis:#a9b7c2; --chassis-dk:#8d9ca8; --chassis-lt:#c3cdd5;
+      --black:#121212; --black-hi:#2a2a2a;
+      --ink:#e9e6dc; --ink-dim:#a8a59c;
+      --cream:#efe7d2; --red:#b8322a;
+      --font-c:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+      --font:"Barlow",Arial,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:#2b2e31;color:var(--ink);font-family:var(--font);display:flex;justify-content:center;padding:26px 12px 60px;}
+
+    /* ---------- rack chassis (Fairchild blue-gray hammertone) ---------- */
+    .chassis{position:relative;width:1180px;padding:28px 30px 26px 30px;border-radius:3px;
+      background:
+        radial-gradient(ellipse at 20% 10%,rgba(255,255,255,.18),transparent 55%),
+        linear-gradient(180deg,var(--chassis-lt) 0%,var(--chassis) 40%,var(--chassis-dk) 100%);
+      box-shadow:0 40px 90px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.5), inset 0 -2px 0 rgba(0,0,0,.25);}
+    .chassis::before{content:"";position:absolute;inset:0;border-radius:3px;pointer-events:none;opacity:.55;mix-blend-mode:multiply;
+      background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='h'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' seed='7'/><feColorMatrix values='0 0 0 0 .55  0 0 0 0 .6  0 0 0 0 .65  0 0 0 .55 0'/></filter><rect width='100%' height='100%' filter='url(%23h)'/></svg>");}
+    .rack-hole{position:absolute;width:12px;height:22px;border-radius:6px;background:#1a1d20;box-shadow:inset 0 2px 3px rgba(0,0,0,.9),0 1px 0 rgba(255,255,255,.4);}
+    .rack-hole.tl{left:10px;top:24px}.rack-hole.bl{left:10px;bottom:24px}.rack-hole.tr{right:10px;top:24px}.rack-hole.br{right:10px;bottom:24px}
+    .rack-hole.ml{left:10px;top:50%;margin-top:-11px}.rack-hole.mr{right:10px;top:50%;margin-top:-11px}
+
+    .top{display:grid;grid-template-columns:96px 1fr;gap:18px;align-items:stretch;}
+
+    /* left utility strip: ON toggle, pilot, fuse */
+    .util{display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:26px 0 18px;}
+    .util .cap{font-family:var(--font-c);font-weight:700;font-size:13px;letter-spacing:.08em;color:#1b1f23;text-align:center}
+    .toggle{position:relative;width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#f6f7f8,#8d949b 60%,#4b5158 100%);box-shadow:0 2px 3px rgba(0,0,0,.5),inset 0 0 0 2px rgba(0,0,0,.25);cursor:pointer;}
+    .toggle .bat{position:absolute;left:50%;top:calc(50% - 30px);width:12px;height:30px;margin-left:-6px;border-radius:6px 6px 7px 7px;background:linear-gradient(90deg,#55595e,#e8eaec 45%,#9ca2a8);box-shadow:0 3px 4px rgba(0,0,0,.55);transform-origin:50% 100%;transform:rotate(0deg);transition:transform .12s ease-out;pointer-events:none;}
+    .toggle.off .bat{transform:rotate(180deg);box-shadow:0 -3px 4px rgba(0,0,0,.55);}
+    .toggle::after{content:"";position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#d8dbde,#6b7076 70%,#3b4046);box-shadow:0 1px 2px rgba(0,0,0,.6);pointer-events:none}
+    .sw .cap,.util .cap{transition:color .15s}
+    .sw.off .cap{color:var(--ink-dim)}
+    .pilot{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#ffe9b0,#c4441f 45%,#4e0d05 90%);box-shadow:0 0 14px rgba(255,120,40,.65),inset 0 0 4px rgba(0,0,0,.6),0 0 0 3px #6b7278,0 0 0 4px #30353a;transition:all .2s}
+    .pilot.dark{background:radial-gradient(circle at 40% 35%,#6b3b2a,#3b1510 50%,#1b0806 90%);box-shadow:inset 0 0 4px rgba(0,0,0,.6),0 0 0 3px #6b7278,0 0 0 4px #30353a}
+    .fuse{width:44px;height:44px;border-radius:50%;background:radial-gradient(circle at 50% 50%,#1a1a1a 0 30%,#0a0a0a 31% 46%,#2a2a2a 47% 100%);box-shadow:0 2px 4px rgba(0,0,0,.6),inset 0 0 0 1px #000;position:relative}
+    .fuse::after{content:"";position:absolute;left:50%;top:50%;width:26px;height:4px;margin:-2px 0 0 -13px;background:#050505;border-radius:2px}
+    .fuse-cap{font-family:var(--font-c);font-size:11px;color:#1b1f23;font-weight:700;letter-spacing:.08em}
+
+    /* ---------- the black inset panel ---------- */
+    .panel{position:relative;background:linear-gradient(170deg,#1f1f1f 0%,#111 35%,#0d0d0d 100%);border-radius:10px;padding:22px 26px 14px 24px;
+      box-shadow:inset 0 0 0 1px #000, inset 0 2px 0 rgba(255,255,255,.08), 0 1px 0 rgba(255,255,255,.35), 0 10px 20px rgba(0,0,0,.35);}
+    .screw{position:absolute;width:11px;height:11px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f2f2f2,#8a8f94 55%,#3a3f44);box-shadow:0 1px 2px rgba(0,0,0,.8)}
+    .screw::after{content:"";position:absolute;left:1px;right:1px;top:50%;height:1.5px;margin-top:-.75px;background:#111;transform:rotate(var(--r,20deg))}
+    .panel .screw.a{left:8px;top:8px}.panel .screw.b{right:8px;top:8px;--r:-35deg}.panel .screw.c{left:8px;bottom:8px;--r:60deg}.panel .screw.d{right:8px;bottom:8px;--r:5deg}
+
+    .grid{display:grid;grid-template-columns:238px 128px 212px 212px 150px;grid-template-rows:212px 212px;column-gap:10px;row-gap:6px;align-items:center;justify-items:center;}
+    .col5{grid-column:5;grid-row:1/3;align-self:stretch;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:4px 0 2px}
+    .cap{font-family:var(--font-c);font-weight:600;font-size:14px;letter-spacing:.06em;line-height:1.05;color:var(--ink);text-align:center;text-transform:uppercase;white-space:pre-line}
+    .ctrl{display:flex;flex-direction:column;align-items:center;gap:6px;position:relative}
+
+    /* meters */
+    .meter{width:238px;height:178px;position:relative;border-radius:8px;background:linear-gradient(180deg,#2a2a2a,#0c0c0c 60%);box-shadow:inset 0 0 0 2px #000,inset 0 0 0 3px #2d2d2d,0 2px 6px rgba(0,0,0,.6);}
+    .meter-face{position:absolute;left:14px;right:14px;top:12px;height:120px;border-radius:70px 70px 6px 6px/60px 60px 6px 6px;background:radial-gradient(ellipse at 50% 100%,#fbf6e6,var(--cream) 60%,#e2d7bb 100%);box-shadow:inset 0 0 0 2px #3a332a,inset 0 8px 18px rgba(0,0,0,.18);overflow:hidden}
+    .meter-face svg{position:absolute;inset:0;width:100%;height:100%}
+    .needle{position:absolute;left:50%;bottom:-10px;width:2px;height:106px;margin-left:-1px;background:#111;transform-origin:50% 100%;transform:rotate(18.6deg);transition:transform .08s ease-out;z-index:3;box-shadow:0 0 1px rgba(0,0,0,.5)}
+    .pivot{position:absolute;left:50%;bottom:-10px;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#777,#111);z-index:4}
+    .meter-zero{position:absolute;left:50%;bottom:16px;width:26px;height:26px;margin-left:-13px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#3a3a3a,#000);box-shadow:inset 0 0 0 1px #222}
+    .meter-zero::after{content:"";position:absolute;left:5px;right:5px;top:50%;height:2px;margin-top:-1px;background:#555}
+
+    /* knobs */
+    .knob-outer{position:relative;user-select:none;-webkit-user-select:none;display:grid;place-items:center}
+    .knob-outer.lg{width:170px;height:170px}
+    .knob-outer.sm{width:120px;height:120px}
+    .knob-outer.md{width:140px;height:140px}
+    .knob-outer .scale{position:absolute;inset:0;pointer-events:none}
+    .knob-outer .skirt{position:absolute;border-radius:50%;background:radial-gradient(circle at 50% 40%,#2a2a2a,#0a0a0a 70%);box-shadow:0 6px 10px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.08)}
+    .lg .skirt{width:116px;height:116px}.sm .skirt{width:70px;height:70px}.md .skirt{width:86px;height:86px}
+    .knob-dial{position:absolute;border-radius:50%;transform:rotate(-135deg);pointer-events:none;transition:transform .05s linear;
+      background:radial-gradient(circle at 42% 32%,#3c3c3c 0%,#171717 45%,#070707 100%);
+      box-shadow:inset 0 1px 1px rgba(255,255,255,.18),inset 0 -6px 10px rgba(0,0,0,.8),0 3px 6px rgba(0,0,0,.6)}
+    .lg .knob-dial{width:92px;height:92px}.sm .knob-dial{width:54px;height:54px}.md .knob-dial{width:66px;height:66px}
+    .knob-dial::after{content:"";position:absolute;left:50%;width:8px;height:8px;margin-left:-4px;border-radius:50%;background:#f4f1e8;box-shadow:0 0 2px rgba(0,0,0,.8)}
+    .lg .knob-dial::after{top:9px}.sm .knob-dial::after{top:6px;width:6px;height:6px;margin-left:-3px}.md .knob-dial::after{top:7px}
+    .knob-input{position:absolute;inset:0;opacity:0;pointer-events:none}
+    .knob-hit{position:absolute;border-radius:50%;cursor:ns-resize;touch-action:none}
+    .lg .knob-hit{width:116px;height:116px}.sm .knob-hit{width:70px;height:70px}.md .knob-hit{width:86px;height:86px}
+    .index{position:absolute;left:50%;width:0;height:0;margin-left:-5px;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid var(--ink);pointer-events:none}
+    .lg .index{top:28px}.sm .index{top:19px}.md .index{top:22px}
+    .readout{font-family:var(--font-c);font-size:12px;letter-spacing:.06em;color:var(--ink-dim);min-height:14px;text-align:center}
+    .panel .ctrl>.readout{position:absolute;left:50%;transform:translateX(-50%);bottom:-2px;opacity:0;transition:opacity .25s;background:#0d0d0d;padding:0 6px;border-radius:3px;color:var(--ink)}
+    .panel .knob-outer:active+.readout,.panel .knob-outer:hover+.readout{opacity:1}
+
+    /* pointer (bar) knobs: metering & AGC */
+    .bar-knob{position:relative;width:64px;height:64px;display:grid;place-items:center;cursor:pointer;margin-top:44px}
+    .bar-knob .hub{width:40px;height:40px;border-radius:50%;background:radial-gradient(circle at 42% 32%,#3a3a3a,#111 55%,#050505);box-shadow:0 4px 8px rgba(0,0,0,.7),inset 0 1px 1px rgba(255,255,255,.15)}
+    .bar-knob .lever{position:absolute;left:50%;top:50%;width:16px;height:58px;margin:-50px 0 0 -8px;border-radius:7px 7px 9px 9px;background:linear-gradient(90deg,#0a0a0a,#2e2e2e 45%,#0c0c0c);box-shadow:0 3px 6px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.12);transform-origin:50% 50px;transition:transform .12s}
+    .bar-knob .lever::after{content:"";position:absolute;left:50%;top:6px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:#e9e6dc;opacity:.9}
+    .trims{display:flex;justify-content:space-between;width:120px;margin-top:10px}
+    .trim{display:flex;flex-direction:column;align-items:center;gap:3px}
+    .trim .screw{position:static;width:12px;height:12px}
+    .trim .cap{font-size:12px}
+
+    .agc{display:flex;flex-direction:column;align-items:center;gap:2px}
+    .agc .legend{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;gap:6px;width:150px}
+    .agc .legend .cap{font-size:12px}
+    .agc .legend svg{width:32px;height:16px}
+
+    .brand{display:flex;justify-content:flex-end;align-items:baseline;gap:10px;padding:0 12px 0 0;margin-top:-2px}
+    .brand .logo{font-family:var(--font-c);font-style:italic;font-weight:700;font-size:30px;letter-spacing:.02em;color:var(--ink);line-height:1}
+    .brand .logo b{font-size:40px;font-weight:700;margin-right:-3px}
+    .brand .small{font-family:var(--font-c);font-size:9px;letter-spacing:.06em;color:var(--ink-dim);line-height:1.05;text-transform:uppercase}
+    .brand .model{font-family:var(--font-c);font-weight:700;font-size:16px;letter-spacing:.06em;color:var(--ink)}
+
+    /* ---------- service panel (added controls) ---------- */
+    .service{margin-top:16px;position:relative;background:linear-gradient(170deg,#1c1c1c,#0f0f0f 40%,#0b0b0b);border-radius:10px;padding:16px 26px 14px;
+      box-shadow:inset 0 0 0 1px #000, inset 0 2px 0 rgba(255,255,255,.07), 0 1px 0 rgba(255,255,255,.35), 0 10px 20px rgba(0,0,0,.35);}
+    .service .screw.a{left:8px;top:8px}.service .screw.b{right:8px;top:8px;--r:-35deg}.service .screw.c{left:8px;bottom:8px;--r:60deg}.service .screw.d{right:8px;bottom:8px;--r:5deg}
+    .service-title{position:absolute;left:50%;top:-9px;transform:translateX(-50%);background:#0f0f0f;padding:0 10px;font-family:var(--font-c);font-size:12px;letter-spacing:.2em;color:var(--ink-dim)}
+    .svc-grid{display:grid;grid-template-columns:1fr 230px 1fr;gap:18px;align-items:start}
+    .svc-ch{display:grid;grid-template-columns:140px 140px 1fr;gap:6px 10px;align-items:center}
+    .svc-ch .cap.head{grid-column:1/-1;text-align:left;font-size:13px;color:var(--ink-dim);border-bottom:1px solid #262626;padding-bottom:4px;margin-bottom:4px}
+    .faders{display:flex;flex-direction:column;gap:10px;padding-top:4px}
+    .fader{display:grid;grid-template-columns:1fr auto;gap:0 8px;align-items:center}
+    .fader .cap{font-size:12px;text-align:left}
+    .fader .readout{text-align:right}
+    .fader .chk{grid-column:1/-1;display:flex;align-items:center;gap:7px;font-family:var(--font-c);font-size:11px;letter-spacing:.08em;white-space:nowrap;color:var(--ink-dim);cursor:pointer;margin-top:-4px;user-select:none}
+    .fader .chk input{position:absolute;opacity:0;width:0;height:0}
+    .fader .chk .box{width:12px;height:12px;border-radius:2px;border:1px solid #000;background:linear-gradient(180deg,#2a2a2a,#101010);box-shadow:inset 0 1px 2px #000,0 1px 0 rgba(255,255,255,.08);position:relative;flex:none}
+    .fader .chk input:checked+.box::after{content:"";position:absolute;left:3px;top:3px;width:4px;height:4px;border-radius:1px;background:var(--amber,#e0a040);box-shadow:0 0 4px var(--amber,#e0a040)}
+    .fader .chk input:checked~*{color:var(--ink)}
+    .fader .chk:has(input:checked){color:var(--ink)}
+    .fader input[type=range]{grid-column:1/-1;-webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;margin:0}
+    .fader input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(180deg,#000,#1d1d1d);box-shadow:inset 0 1px 2px #000,0 1px 0 rgba(255,255,255,.07)}
+    .fader input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:18px;margin-top:-6px;border-radius:3px;background:linear-gradient(180deg,#3a3a3a,#141414 50%,#0a0a0a);box-shadow:0 3px 5px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.14);border:1px solid #000;background-image:linear-gradient(180deg,#3a3a3a,#141414 50%,#0a0a0a),linear-gradient(90deg,transparent 48%,#e9e6dc 48%,#e9e6dc 52%,transparent 52%);background-blend-mode:normal}
+    .fader input[type=range]::-webkit-slider-thumb{background:linear-gradient(90deg,transparent 46%,#e9e6dc 46%,#e9e6dc 54%,transparent 54%) center/100% 7px no-repeat,linear-gradient(180deg,#3a3a3a,#141414 50%,#0a0a0a)}
+    .fader input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:#101010;box-shadow:inset 0 1px 2px #000}
+    .fader input[type=range]::-moz-range-thumb{width:26px;height:18px;border-radius:3px;border:1px solid #000;background:linear-gradient(180deg,#3a3a3a,#141414 50%,#0a0a0a)}
+
+    .svc-mid{display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:6px}
+    .switch-row{display:flex;gap:26px;margin-bottom:22px}
+    .sw{display:flex;flex-direction:column;align-items:center;gap:30px;cursor:pointer}
+    .sw .cap{font-size:12px}
+    .sw input{display:none}
+    .transport{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+    .btn{font-family:var(--font-c);font-weight:600;letter-spacing:.1em;font-size:12px;color:var(--ink);background:linear-gradient(180deg,#303030,#151515 60%,#0b0b0b);border:1px solid #000;border-radius:4px;padding:8px 12px;cursor:pointer;box-shadow:0 3px 5px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.12)}
+    .btn:hover{color:#fff;background:linear-gradient(180deg,#3a3a3a,#1a1a1a 60%,#0d0d0d)}
+    .btn:active{transform:translateY(1px);box-shadow:0 1px 2px rgba(0,0,0,.6)}
+    .statuswrap{display:flex;flex-direction:column;gap:2px;align-items:center}
+    .statusline{font-family:var(--font-c);font-size:11px;letter-spacing:.08em;color:var(--ink-dim)}
+    .statusline b{font-weight:600;color:var(--ink-dim)}
+    #engineStatus,#runStatus,#ioStatus{color:#e0a040}
+
+    .digital-meters{margin-top:14px;padding-top:10px;border-top:1px solid #262626}
+    .digital-meters-title{display:none}
+    .digital-meter-row{display:flex;gap:40px;justify-content:center}
+    .digital-meter{flex:1;max-width:440px}
+    .digital-meter-label{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+    .digital-meter-label span{font-family:var(--font-c);font-size:11px;letter-spacing:.1em;color:var(--ink-dim);text-transform:uppercase}
+    .digital-meter-value{color:var(--ink)!important;font-size:13px!important}
+    .digital-meter-bar{height:8px;background:#000;border:1px solid #2a2a2a;border-radius:2px;overflow:hidden;position:relative}
+    .digital-meter-fill{height:100%;background:linear-gradient(90deg,#9a7a28,#d6a83a 60%,#b8322a 100%);width:0%;transition:width .08s ease-out}
+    .digital-meter-ticks{position:absolute;inset:0;display:flex;justify-content:space-between;padding:0 2px;pointer-events:none}
+    .digital-meter-ticks span{width:1px;background:rgba(255,255,255,.12)}
+    .hidden{display:none!important}
+  </style>
+</head>
+<body>
+
+<div class="chassis">
+  <div class="rack-hole tl"></div><div class="rack-hole ml"></div><div class="rack-hole bl"></div>
+  <div class="rack-hole tr"></div><div class="rack-hole mr"></div><div class="rack-hole br"></div>
+
+  <div class="top">
+    <!-- utility strip -->
+    <div class="util">
+      <div class="ctrl">
+        <div class="cap" style="margin-bottom:28px">ON</div>
+        <div id="powerToggle" class="toggle" title="Power = in circuit. Down = bypass (hard-wire through)."><div class="bat"></div></div>
+      </div>
+      <div id="pilot" class="pilot dark" title="Pilot lamp: lit when the engine is running"></div>
+      <div class="ctrl">
+        <div class="fuse"></div>
+        <div class="fuse-cap">FUSE 5A</div>
+      </div>
+    </div>
+
+    <!-- black inset panel -->
+    <div class="panel">
+      <div class="screw a"></div><div class="screw b"></div><div class="screw c"></div><div class="screw d"></div>
+
+      <div class="grid">
+        <!-- ROW 1: LEFT-LAT -->
+        <div class="meter"><div class="meter-face"><svg id="faceL" viewBox="0 0 202 116" preserveAspectRatio="xMidYMax meet"></svg><div id="needleL" class="needle"></div><div class="pivot"></div></div><div class="meter-zero" title="Meter zero adj."></div></div>
+
+        <div class="ctrl">
+          <div class="cap">LEFT-LAT
+METERING</div>
+          <div class="cap" style="font-size:12px;margin-top:-2px">BAL &nbsp;ZERO&nbsp; BAL</div>
+          <div class="bar-knob" title="Meter switch (ZERO = gain reduction). Calibration positions not modeled."><div class="hub"></div><div class="lever"></div></div>
+          <div class="trims"><div class="trim"><div class="screw" style="--r:80deg"></div><div class="cap">ZERO</div></div><div class="trim"><div class="screw" style="--r:-20deg"></div><div class="cap">BAL</div></div></div>
+        </div>
+
+        <div class="ctrl">
+          <div class="cap">LEFT CHANNEL
+INPUT GAIN</div>
+          <div class="knob-outer lg" data-scale="input"><svg class="scale" viewBox="0 0 170 170"></svg><div class="skirt"></div><div class="index"></div>
+            <div id="dial-inDb1" class="knob-dial"></div>
+            <input type="range" id="inDb1" class="knob-input" min="-24" max="24" step="0.1" value="0"><div class="knob-hit"></div>
+          </div>
+          <div id="val-inDb1" class="readout">0.0</div>
+        </div>
+
+        <div class="ctrl">
+          <div class="cap">LEFT-LAT
+THRESHOLD</div>
+          <div class="knob-outer lg" data-scale="threshold"><svg class="scale" viewBox="0 0 170 170"></svg><div class="skirt"></div><div class="index"></div>
+            <div id="dial-thDb1" class="knob-dial"></div>
+            <input type="range" id="thDb1" class="knob-input" min="0" max="10" step="0.05" value="5"><div class="knob-hit"></div>
+          </div>
+          <div id="val-thDb1" class="readout">5.0</div>
+        </div>
+
+        <!-- ROW 2: RIGHT-VERT -->
+        <div class="meter"><div class="meter-face"><svg id="faceR" viewBox="0 0 202 116" preserveAspectRatio="xMidYMax meet"></svg><div id="needleR" class="needle"></div><div class="pivot"></div></div><div class="meter-zero" title="Meter zero adj."></div></div>
+
+        <div class="ctrl">
+          <div class="cap">RIGHT-VERT
+METERING</div>
+          <div class="cap" style="font-size:12px;margin-top:-2px">BAL &nbsp;ZERO&nbsp; BAL</div>
+          <div class="bar-knob" title="Meter switch (ZERO = gain reduction). Calibration positions not modeled."><div class="hub"></div><div class="lever"></div></div>
+          <div class="trims"><div class="trim"><div class="screw" style="--r:30deg"></div><div class="cap">ZERO</div></div><div class="trim"><div class="screw" style="--r:-70deg"></div><div class="cap">BAL</div></div></div>
+        </div>
+
+        <div class="ctrl">
+          <div class="cap">RIGHT CHANNEL
+INPUT GAIN</div>
+          <div class="knob-outer lg" data-scale="input"><svg class="scale" viewBox="0 0 170 170"></svg><div class="skirt"></div><div class="index"></div>
+            <div id="dial-inDb2" class="knob-dial"></div>
+            <input type="range" id="inDb2" class="knob-input" min="-24" max="24" step="0.1" value="0"><div class="knob-hit"></div>
+          </div>
+          <div id="val-inDb2" class="readout">0.0</div>
+        </div>
+
+        <div class="ctrl">
+          <div class="cap">RIGHT-VERT
+THRESHOLD</div>
+          <div class="knob-outer lg" data-scale="threshold"><svg class="scale" viewBox="0 0 170 170"></svg><div class="skirt"></div><div class="index"></div>
+            <div id="dial-thDb2" class="knob-dial"></div>
+            <input type="range" id="thDb2" class="knob-input" min="0" max="10" step="0.05" value="5"><div class="knob-hit"></div>
+          </div>
+          <div id="val-thDb2" class="readout">5.0</div>
+        </div>
+
+        <div class="col5">
+        <div class="ctrl">
+          <div class="cap">LEFT-LAT
+TIME CONSTANT</div>
+          <div class="knob-outer sm" data-scale="tc"><svg class="scale" viewBox="0 0 120 120"></svg><div class="skirt"></div><div class="index"></div>
+            <div id="dial-tc1" class="knob-dial"></div>
+            <input type="range" id="tc1" class="knob-input" min="1" max="6" step="1" value="3"><div class="knob-hit"></div>
+          </div>
+          <div id="val-tc1" class="readout hidden">3</div>
+        </div>
+
+        <!-- AGC switch sits between the two time-constant knobs -->
+        <div class="agc">
+          <div class="cap">AGC</div>
+          <div class="legend">
+            <div class="cap" style="text-align:right">LEFT
+RIGHT</div>
+            <svg viewBox="0 0 32 16"><path d="M2 14 L10 14 L10 3 L16 3 L22 14 L30 14" fill="none" stroke="#e9e6dc" stroke-width="1.6"/></svg>
+            <div class="cap" style="text-align:left">LAT
+VERT</div>
+          </div>
+          <div id="agcKnob" class="bar-knob" title="AGC: LEFT/RIGHT = two independent limiters. LAT/VERT = sum/difference (M/S)."><div class="hub"></div><div class="lever"></div></div>
+        </div>
+        <div class="ctrl">
+          <div class="cap">RIGHT-VERT
+TIME CONSTANT</div>
+          <div class="knob-outer sm" data-scale="tc"><svg class="scale" viewBox="0 0 120 120"></svg><div class="skirt"></div><div class="index"></div>
+            <div id="dial-tc2" class="knob-dial"></div>
+            <input type="range" id="tc2" class="knob-input" min="1" max="6" step="1" value="3"><div class="knob-hit"></div>
+          </div>
+          <div id="val-tc2" class="readout hidden">3</div>
+        </div>
+
+        </div>
+      </div>
+
+      <div class="brand">
+        <div class="logo"><b>F</b>AIRCHILD</div>
+        <div class="small">Recording Eqpt. Corp.<br>Long Island City 1, N.Y.</div>
+        <div class="model">MODEL 670</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== service panel: everything that is not on the original faceplate ===== -->
+  <div class="service">
+    <div class="screw a"></div><div class="screw b"></div><div class="screw c"></div><div class="screw d"></div>
+    <div class="service-title">SERVICE PANEL</div>
+
+    <div class="svc-grid">
+      <!-- left channel additions -->
+      <div class="svc-ch">
+        <div class="cap head">LEFT-LAT</div>
+        <div class="ctrl">
+          <div class="cap" style="font-size:12px">MAKEUP</div>
+          <div class="knob-outer md" data-scale="makeup"><svg class="scale" viewBox="0 0 140 140"></svg><div class="skirt"></div><div class="index"></div>
+            <div id="dial-outDb1" class="knob-dial"></div>
+            <input type="range" id="outDb1" class="knob-input" min="-12" max="24" step="0.1" value="0"><div class="knob-hit"></div>
+          </div>
+          <div id="val-outDb1" class="readout">0.0</div>
+        </div>
+        <div class="ctrl">
+          <div class="cap" style="font-size:12px">DC THRESHOLD</div>
+          <div class="knob-outer md" data-scale="dc"><svg class="scale" viewBox="0 0 140 140"></svg><div class="skirt"></div><div class="index"></div>
+            <div id="dial-dc1" class="knob-dial"></div>
+            <input type="range" id="dc1" class="knob-input" min="0" max="1" step="0.01" value="0.5"><div class="knob-hit"></div>
+          </div>
+          <div id="val-dc1" class="readout">CLASSIC</div>
+        </div>
+        <div class="faders">
+          <div class="fader"><div class="cap">TUBE DRIVE</div><div id="val-tube1" class="readout">0.0 dB</div><input type="range" id="tube1" class="tube-slider" min="0" max="24" step="0.1" value="0"></div>
+          <div class="fader"><div class="cap">PRESERVE CHARACTER</div><div id="val-pres1" class="readout">0%</div><input type="range" id="pres1" class="tube-slider" min="0" max="100" step="1" value="0">
+            <label class="chk" title="Checked: match the input's spectrum AND level (current behavior). Unchecked: match spectral shape only; Makeup sets the volume."><input type="checkbox" id="presVol1" checked><span class="box"></span>PRESERVE VOLUME</label></div>
+          <div class="fader"><div class="cap">HEADROOM</div><div id="val-head1" class="readout">0.0 dB</div><input type="range" id="head1" class="tube-slider" min="0" max="24" step="0.1" value="0"></div>
+        </div>
+      </div>
+
+      <!-- center: switches, transport, status -->
+      <div class="svc-mid">
+        <div class="switch-row">
+          <label class="sw" title="Both gain stages follow the larger control voltage">
+            <div class="cap">LINK</div>
+            <div class="toggle" data-for="link"><div class="bat"></div></div>
+            <input type="checkbox" id="link" checked>
+          </label>
+          <label class="sw" title="Adds hum, noise and supply drift">
+            <div class="cap">ANALOG</div>
+            <div class="toggle" data-for="analog"><div class="bat"></div></div>
+            <input type="checkbox" id="analog" checked>
+          </label>
+        </div>
+        <div class="transport">
+          <button id="loadBtn" class="btn">LOAD FILE</button>
+          <input type="file" id="fileInput" accept="audio/*" style="display:none">
+          <button id="micBtn" class="btn">MIC</button>
+          <button id="playBtn" class="btn">PLAY</button>
+          <button id="stopBtn" class="btn">STOP</button>
+        </div>
+        <div class="statuswrap">
+          <div class="statusline"><b>ENGINE</b> <span id="engineStatus">NOT READY</span></div>
+          <div class="statusline"><b>STATE</b> <span id="runStatus">UNIT STANDBY</span></div>
+          <div class="statusline"><b>IO</b> <span id="ioStatus">â€”</span></div>
+        </div>
+        <!-- original controls kept for the DSP wiring -->
+        <input type="checkbox" id="bypass" class="hidden">
+        <select id="modeSel" class="hidden"><option value="0">LEFT/RIGHT</option><option value="1">LAT/VERT (M/S)</option></select>
+      </div>
+
+      <!-- right channel additions -->
+      <div class="svc-ch">
+        <div class="cap head">RIGHT-VERT</div>
+        <div class="ctrl">
+          <div class="cap" style="font-size:12px">MAKEUP</div>
+          <div class="knob-outer md" data-scale="makeup"><svg class="scale" viewBox="0 0 140 140"></svg><div class="skirt"></div><div class="index"></div>
+            <div id="dial-outDb2" class="knob-dial"></div>
+            <input type="range" id="outDb2" class="knob-input" min="-12" max="24" step="0.1" value="0"><div class="knob-hit"></div>
+          </div>
+          <div id="val-outDb2" class="readout">0.0</div>
+        </div>
+        <div class="ctrl">
+          <div class="cap" style="font-size:12px">DC THRESHOLD</div>
+          <div class="knob-outer md" data-scale="dc"><svg class="scale" viewBox="0 0 140 140"></svg><div class="skirt"></div><div class="index"></div>
+            <div id="dial-dc2" class="knob-dial"></div>
+            <input type="range" id="dc2" class="knob-input" min="0" max="1" step="0.01" value="0.5"><div class="knob-hit"></div>
+          </div>
+          <div id="val-dc2" class="readout">CLASSIC</div>
+        </div>
+        <div class="faders">
+          <div class="fader"><div class="cap">TUBE DRIVE</div><div id="val-tube2" class="readout">0.0 dB</div><input type="range" id="tube2" class="tube-slider" min="0" max="24" step="0.1" value="0"></div>
+          <div class="fader"><div class="cap">PRESERVE CHARACTER</div><div id="val-pres2" class="readout">0%</div><input type="range" id="pres2" class="tube-slider" min="0" max="100" step="1" value="0">
+            <label class="chk" title="Checked: match the input's spectrum AND level (current behavior). Unchecked: match spectral shape only; Makeup sets the volume."><input type="checkbox" id="presVol2" checked><span class="box"></span>PRESERVE VOLUME</label></div>
+          <div class="fader"><div class="cap">HEADROOM</div><div id="val-head2" class="readout">0.0 dB</div><input type="range" id="head2" class="tube-slider" min="0" max="24" step="0.1" value="0"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="digital-meters">
+      <div class="digital-meter-row">
+        <div class="digital-meter">
+          <div class="digital-meter-label"><span>Left-Lat gain reduction</span><span class="digital-meter-value" id="grValueA">0.0 dB</span></div>
+          <div class="digital-meter-bar"><div class="digital-meter-fill" id="grBarA"></div><div class="digital-meter-ticks"><span></span><span></span><span></span><span></span><span></span><span></span></div></div>
+        </div>
+        <div class="digital-meter">
+          <div class="digital-meter-label"><span>Right-Vert gain reduction</span><span class="digital-meter-value" id="grValueB">0.0 dB</span></div>
+          <div class="digital-meter-bar"><div class="digital-meter-fill" id="grBarB"></div><div class="digital-meter-ticks"><span></span><span></span><span></span><span></span><span></span><span></span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== panel artwork: VU meter faces, printed knob scales, hardware-style switches =====
+(() => {
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (n, a, parent) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); parent.appendChild(e); return e; };
+
+  // VU face. Needle pivot is at (101, 124) in viewBox units (below the visible face), sweep is -45..+45 deg.
+  // Deflection follows a real VU law: 0 VU = 70.7% of full scale, +3 = 100%, -20 = 7.1%.
+  const PIV = { x: 101, y: 126 }, R = 88, SWEEP = 90;
+  const vuAngle = (db) => -SWEEP / 2 + SWEEP * 0.707 * Math.pow(10, db / 20);   // degrees, 0 = straight up
+  const pt = (angDeg, r) => { const a = (angDeg - 90) * Math.PI / 180; return [PIV.x + r * Math.cos(a), PIV.y + r * Math.sin(a)]; };
+  function drawFace(svg) {
+    svg.innerHTML = "";
+    const arc = (r, a0, a1, attrs) => { const [x0, y0] = pt(a0, r), [x1, y1] = pt(a1, r); el("path", Object.assign({ d: `M${x0} ${y0} A${r} ${r} 0 0 1 ${x1} ${y1}`, fill: "none" }, attrs), svg); };
+    // black arc up to 0, red arc 0..+3
+    arc(R - 14, vuAngle(-20) - 2, vuAngle(0), { stroke: "#1a1a1a", "stroke-width": 1.6 });
+    arc(R - 14, vuAngle(0), vuAngle(3) + 1.5, { stroke: "#b8322a", "stroke-width": 4 });
+    const major = [-20, -10, -7, -5, -3, -2, -1, 0, 1, 2, 3];
+    major.forEach(db => {
+      const a = vuAngle(db); const [x0, y0] = pt(a, R - 14), [x1, y1] = pt(a, R - 6);
+      el("line", { x1: x0, y1: y0, x2: x1, y2: y1, stroke: db > 0 ? "#b8322a" : "#1a1a1a", "stroke-width": db === 0 ? 1.8 : 1.1 }, svg);
+      const [tx, ty] = pt(a, R + 2);
+      const t = el("text", { x: tx, y: ty, "text-anchor": "middle", "font-family": "Barlow Condensed, Arial Narrow, sans-serif", "font-size": 8.5, "font-weight": 700, fill: db > 0 ? "#b8322a" : "#1a1a1a" }, svg);
+      t.textContent = db > 0 ? "+" + db : String(db);
+    });
+    // minor ticks
+    [-15, -12, -9, -8, -6, -4, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5].forEach(db => { const a = vuAngle(db); const [x0, y0] = pt(a, R - 14), [x1, y1] = pt(a, R - 9); el("line", { x1: x0, y1: y0, x2: x1, y2: y1, stroke: db > 0 ? "#b8322a" : "#1a1a1a", "stroke-width": .8 }, svg); });
+    // lower percentage scale
+    [0, 20, 40, 60, 80, 100].forEach(p => { const db = p === 0 ? -40 : 20 * Math.log10(p / 100); const a = vuAngle(Math.max(db, -22)); const [tx, ty] = pt(a, R - 22); const t = el("text", { x: tx, y: ty, "text-anchor": "middle", "font-family": "Barlow Condensed, Arial Narrow, sans-serif", "font-size": 7, fill: "#4a4a4a" }, svg); t.textContent = p; });
+    const vu = el("text", { x: 101, y: 78, "text-anchor": "middle", "font-family": "Barlow Condensed, Arial Narrow, sans-serif", "font-size": 9, "font-weight": 600, fill: "#1a1a1a", "letter-spacing": 1 }, svg); vu.textContent = "VU";
+    const lbl = el("text", { x: 101, y: 92, "text-anchor": "middle", "font-family": "Barlow Condensed, Arial Narrow, sans-serif", "font-size": 11, "font-weight": 600, fill: "#2a2a2a", "letter-spacing": 2.5 }, svg); lbl.textContent = "FAIRCHILD";
+    const dbl = el("text", { x: 101, y: 102, "text-anchor": "middle", "font-family": "Barlow Condensed, Arial Narrow, sans-serif", "font-size": 6.5, fill: "#5a5a5a", "letter-spacing": 1.5 }, svg); dbl.textContent = "DB LIMITING";
+  }
+  drawFace(document.getElementById("faceL"));
+  drawFace(document.getElementById("faceR"));
+  window.__vuAngle = vuAngle;
+
+  // printed scales around knobs: labels at -135..+135 degrees, matching the dial's rotation range
+  const SCALES = {
+    input:     { labels: ["-24", "-18", "-12", "-6", "0", "+6", "+12", "+18", "+24"], ticks: 48, r: 72, font: 10 },
+    threshold: { labels: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"], ticks: 20, r: 72, font: 10 },
+    tc:        { labels: ["1", "2", "3", "4", "5", "6"], ticks: 5, r: 48, font: 10 },
+    makeup:    { labels: ["-12", "", "0", "", "+12", "", "+24"], ticks: 12, r: 58, font: 9 },
+    dc:        { labels: ["HARD", "", "", "", "", "", "", "", "", "", "SOFT"], ticks: 10, r: 58, font: 8, mid: "CLASSIC" }
+  };
+  document.querySelectorAll(".knob-outer[data-scale]").forEach(k => {
+    const cfg = SCALES[k.dataset.scale]; const svg = k.querySelector("svg.scale"); if (!cfg || !svg) return;
+    const size = parseFloat(svg.getAttribute("viewBox").split(" ")[2]); const c = size / 2;
+    const p = (deg, r) => { const a = (deg - 90) * Math.PI / 180; return [c + r * Math.cos(a), c + r * Math.sin(a)]; };
+    for (let i = 0; i <= cfg.ticks; i++) { const d = -135 + 270 * i / cfg.ticks; const [x0, y0] = p(d, cfg.r - 9), [x1, y1] = p(d, cfg.r - 5); el("line", { x1: x0, y1: y0, x2: x1, y2: y1, stroke: "#cfcbbf", "stroke-width": .8 }, svg); }
+    cfg.labels.forEach((lab, i) => { if (!lab) return; const d = -135 + 270 * i / (cfg.labels.length - 1); const [x, y] = p(d, cfg.r + 2); const t = el("text", { x, y: y + cfg.font * .35, "text-anchor": "middle", "font-family": "Barlow Condensed, Arial Narrow, sans-serif", "font-size": cfg.font, "font-weight": 600, fill: "#e9e6dc" }, svg); t.textContent = lab; });
+    if (cfg.mid) { const t = el("text", { x: c, y: size - 4, "text-anchor": "middle", "font-family": "Barlow Condensed, Arial Narrow, sans-serif", "font-size": 7, fill: "#a8a59c", "letter-spacing": 1 }, svg); t.textContent = cfg.mid; }
+  });
+
+  // toggle switches bound to hidden checkboxes (LINK / ANALOG)
+  document.querySelectorAll(".toggle[data-for]").forEach(t => {
+    const cb = document.getElementById(t.dataset.for);
+    const sync = () => { t.classList.toggle("off", !cb.checked); t.parentElement.classList.toggle("off", !cb.checked); };
+    t.closest("label").addEventListener("click", e => { e.preventDefault(); cb.checked = !cb.checked; cb.dispatchEvent(new Event("change")); sync(); });
+    cb.addEventListener("change", sync);
+    sync();
+  });
+  // ON toggle = not bypassed
+  const pw = document.getElementById("powerToggle"), byp = document.getElementById("bypass");
+  const syncPw = () => pw.classList.toggle("off", byp.checked);
+  pw.addEventListener("click", () => { byp.checked = !byp.checked; byp.dispatchEvent(new Event("change")); syncPw(); });
+  byp.addEventListener("change", syncPw);
+  syncPw();
+  // AGC lever = mode select (lever left = LEFT/RIGHT, right = LAT/VERT)
+  const agc = document.getElementById("agcKnob"), sel = document.getElementById("modeSel");
+  const syncAgc = () => { agc.querySelector(".lever").style.transform = "rotate(" + (sel.value === "1" ? 35 : -35) + "deg)"; };
+  agc.addEventListener("click", () => { sel.value = sel.value === "1" ? "0" : "1"; sel.dispatchEvent(new Event("change")); syncAgc(); });
+  syncAgc();
+  // metering levers rest at ZERO (straight up)
+  document.querySelectorAll(".bar-knob:not(#agcKnob) .lever").forEach(l => l.style.transform = "rotate(0deg)");
+  // pilot lamp follows engine status text
+  const eng = document.getElementById("engineStatus"), pilot = document.getElementById("pilot");
+  new MutationObserver(() => pilot.classList.toggle("dark", !/READY|RUNNING/i.test(eng.textContent))).observe(eng, { childList: true, characterData: true, subtree: true });
+})();
+</script>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+
+  let audioCtx = null, workletNode = null, sourceNode = null;
+  let audioBuffer = null, micStream = null, engineReady = false;
+  let grA = 0, grB = 0;
+
+  // meter smoothing
+  class MeterSm { constructor(a=0.90){ this.a=a; this.v=0; } process(x){ this.v = this.a*this.v + (1-this.a)*x; return this.v; } }
+  const meterL = new MeterSm(0.90), meterR = new MeterSm(0.90);
+
+  function setEngine(msg, ok){ $("engineStatus").textContent = msg; $("engineStatus").style.color = ok ? "#e0a040" : "#e05a40"; }
+  function setRun(msg, ok){ $("runStatus").textContent = msg; $("runStatus").style.color = ok ? "#e0a040" : "#e05a40"; }
+  function setIO(msg, ok){ $("ioStatus").textContent = msg; $("ioStatus").style.color = ok ? "#e0a040" : "#e05a40"; }
+  function setNeedle(el, grDb){
+    // VU-law deflection: needle rests on "0" (70.7% of full scale) and falls toward -20 as
+    // plate current drops with gain reduction; -x on the face = x dB of limiting.
+    const g = Math.max(0, Math.min(40, Number(grDb)||0));
+    const ang = (window.__vuAngle ? window.__vuAngle(-g) : -45 + 90*0.707*Math.pow(10,-g/20));
+    el.style.transform = "rotate(" + ang + "deg)";
+  }
+
+  // =====================================================
+  // AudioWorklet code
+  // Timing network: diode-coupled R/C per the 670 schematic (release only via R_T,
+  // C_U/C_V coupled through R_U/R_V on positions 5/6). DC Threshold is a dead-zone
+  // on the rectified drive. 6386 curvature tracks bias toward cutoff.
+  // =====================================================
+  const workletCode = `
+const TAU = 6.283185307179586;
+const clamp = (x,a,b) => Math.min(b, Math.max(a, x));
+const fz = (x) => Number.isFinite(x) ? x : 0;
+const dbToLin = (db) => Math.pow(10, db/20);
+
+class PRNG{constructor(s=1){this.s=s|0;}next(){let x=this.s|0;x^=x<<13;x^=x>>>17;x^=x<<5;this.s=x|0;return x/2147483648;}nextU(){return this.next()*0.5+0.5;}}
+class OnePole{constructor(fs,fc){this.fs=fs;this.z=0;this.setFc(fc);}setFc(fc){fc=Math.max(1e-6,Math.min(this.fs*0.49,fc));this.a=Math.exp(-TAU*fc/this.fs);this.b=1-this.a;}reset(){this.z=0;}process(x){x=fz(x);this.z=this.b*x+this.a*this.z;return fz(this.z);}}
+class OnePoleHP{constructor(fs,fc){this.lp=new OnePole(fs,fc);}reset(){this.lp.reset();}process(x){x=fz(x);return fz(x-this.lp.process(x));}}
+class Biquad{
+  constructor(){this.b0=1;this.b1=0;this.b2=0;this.a1=0;this.a2=0;this.z1=0;this.z2=0;}
+  reset(){this.z1=0;this.z2=0;}
+  process(x){
+    const y=this.b0*x+this.z1;
+    this.z1=this.b1*x - this.a1*y + this.z2;
+    this.z2=this.b2*x - this.a2*y;
+    return y;
+  }
+  setLowpass(fs,fc,Q){
+    const w0=TAU*fc/fs;
+    const cosw0=Math.cos(w0), sinw0=Math.sin(w0);
+    const alpha=sinw0/(2*Q);
+    const a0=1+alpha;
+    this.b0=((1-cosw0)/2)/a0;
+    this.b1=(1-cosw0)/a0;
+    this.b2=this.b0;
+    this.a1=(-2*cosw0)/a0;
+    this.a2=(1-alpha)/a0;
+  }
+}
+
+class XfmrBlock{
+  constructor(fs,prng,tag,cfg){
+    this.fs=fs;
+    const tol=(t)=>(1+t*(prng.nextU()*2-1));
+    this.r=(cfg.r??0.0)*tol(cfg.tol??0.05);
+    this.lp=new OnePole(fs,cfg.lp??25000);
+    this.hp=new OnePoleHP(fs,cfg.hp??8);
+    this.nl=cfg.nl??0.22;
+    this.asym=cfg.asym??0.04;
+    this.drive=cfg.drive??1.0;
+    this.flux=0;
+    this.fluxLp=new OnePole(fs,800);
+  }
+  reset(){this.lp.reset();this.hp.reset();this.flux=0;this.fluxLp.reset();}
+  process(x,supply){
+    x=fz(x)*this.drive;
+    x*=(1.0-this.r);
+    x=this.hp.process(this.lp.process(x));
+    const fluxTarget=x*0.5;
+    const fluxDiff=fluxTarget-this.flux;
+    const hyst=fluxDiff>0?0.15:0.08;
+    this.flux+=fluxDiff*hyst;
+    const a=this.asym*(0.5+0.5*supply);
+    const k=this.nl*(0.7+0.3*supply);
+    const fluxSat=this.fluxLp.process(Math.abs(this.flux));
+    const satMod=1.0+fluxSat*0.3;
+    const y=(1-k)*x + k*Math.tanh((2.0 + a*Math.tanh(x*2.0))*x*satMod);
+    return clamp(y,-4.0,4.0);
+  }
+}
+
+class T104TertiaryFeedback{
+  constructor(fs){
+    this.fs=fs;
+    this.coupling=0.10;
+    this.flux=0;
+    this.fluxLp=new OnePole(fs,200);
+    this.leakageLp=new OnePole(fs,8000);
+    this.satThresh=0.8;
+  }
+  reset(){this.flux=0;this.fluxLp.reset();this.leakageLp.reset();}
+  process(outputSignal){
+    const dt=1/this.fs;
+    this.flux+=outputSignal*dt*500;
+    this.flux*=0.9997;
+    const fluxMag=this.fluxLp.process(Math.abs(this.flux));
+    const satFactor=1.0/(1.0+Math.pow(fluxMag/this.satThresh,2));
+    let tertiary=outputSignal*this.coupling*satFactor;
+    tertiary=this.leakageLp.process(tertiary);
+    return tertiary;
+  }
+}
+
+class GermaniumRectifier{
+  constructor(fs){
+    this.fs=fs;
+    this.Vf=0.06; this.Vt=0.026; this.Is=1e-6;
+    this.Rf0=50; this.Rr=100000;
+    this.recoveryTau=2e-6;
+    this.recoveryState=0;
+    this.tempDrift=0;
+    this.tempLp=new OnePole(fs,0.1);
+    this.outLp=new OnePole(fs,20000);
+  }
+  reset(){this.recoveryState=0;this.tempDrift=0;this.tempLp.reset();this.outLp.reset();}
+  process(vin){
+    const dt=1/this.fs;
+    this.tempDrift=this.tempLp.process(Math.abs(vin)*0.001);
+    const Vf_eff=this.Vf*(1.0-this.tempDrift*0.1);
+    const vabs=Math.abs(vin);
+    let iout=0;
+    if(vabs>Vf_eff){
+      const vover=vabs-Vf_eff;
+      const Rf_dyn=this.Rf0 + this.Vt/(vover+this.Is);
+      iout=vover/Rf_dyn;
+      this.recoveryState=Math.min(1,this.recoveryState+dt*50000);
+    }else{
+      iout=vabs*1e-6;
+    }
+    const recoveryFactor=1.0-this.recoveryState*0.3;
+    this.recoveryState*=Math.exp(-dt/this.recoveryTau);
+    let vout=iout*recoveryFactor*100;
+    vout=this.outLp.process(vout);
+    return Math.max(0,vout);
+  }
+}
+
+class FCDetectorTC{
+  // Real 670 timing network (values per DAFx-12 analysis of the 670 schematic):
+  //   bridge rectifier -> R_attack -> C_T, discharged ONLY through R_T.
+  //   C_U / C_V hang off the C_T node through R_U / R_V (open on positions 1-4),
+  //   so they charge slowly on sustained program and lengthen the release when it ends.
+  constructor(fs){
+    this.fs=fs;
+    this.rectifier=new GermaniumRectifier(fs);
+    this.Ratt=68;                      // 68R x 2/4/8uF -> 0.2/0.4/0.8 ms attack to 90% (spec)
+    this.CT=4e-6; this.CU=8e-6; this.CV=20e-6;
+    this.RT=220000; this.RU=0; this.RV=0;
+    this.vT=0; this.vU=0; this.vV=0;
+    this.tc=3;
+    this.dcOffset=0;                   // DC Threshold: class-B crossover dead-zone on the rectified drive
+    this.Vclip=0.55;                   // sidechain amp clip level (control-voltage units)
+    this.outLp=new OnePole(fs,18000);  // essentially transparent; loop lag must stay << attack time
+    this.controlVoltage=0;
+    this._recalc();
+  }
+  reset(){
+    this.rectifier.reset();
+    this.vT=0; this.vU=0; this.vV=0;
+    this.outLp.reset();
+    this.controlVoltage=0;
+  }
+  _recalc(){
+    const dt=1/this.fs;
+    this.kAtt = 1-Math.exp(-dt/(this.Ratt*this.CT));   // one-way charge coefficient
+    this.kRel = Math.exp(-dt/(this.RT*this.CT));       // R_T discharge
+    this.gU = this.RU>0 ? dt/this.RU : 0;              // conductance*dt for coupling paths
+    this.gV = this.RV>0 ? dt/this.RV : 0;
+  }
+  setTC(tc){
+    tc=Math.round(clamp(tc,1,6));
+    if(tc===this.tc && this._init) return;
+    this._init=true;
+    this.tc=tc;
+    if(tc===1){this.CT=2e-6; this.RT=51900;  this.RU=0;      this.RV=0;}
+    if(tc===2){this.CT=2e-6; this.RT=149900; this.RU=0;      this.RV=0;}
+    if(tc===3){this.CT=4e-6; this.RT=220000; this.RU=0;      this.RV=0;}
+    if(tc===4){this.CT=8e-6; this.RT=220000; this.RU=0;      this.RV=0;}
+    if(tc===5){this.CT=4e-6; this.RT=220000; this.RU=100000; this.RV=0;}
+    if(tc===6){this.CT=2e-6; this.RT=220000; this.RU=100000; this.RV=100000;}
+    this._recalc();
+  }
+  setDCOffset(v){ this.dcOffset=Math.max(0,v); }
+  process(scIn){
+    // control amplifier swing is bounded (hard-limited sidechain amp in the real unit)
+    const vr=Math.min(this.Vclip, this.rectifier.process(scIn));
+    // DC threshold = bias on the class-B first sidechain stage: nothing passes until the
+    // rectified drive clears the dead zone. Raises the knee / "3 dB limiting point".
+    const vdrive=Math.max(0, vr-this.dcOffset);
+
+    // diode: current only flows INTO C_T
+    if(vdrive>this.vT) this.vT += (vdrive-this.vT)*this.kAtt;
+
+    // C_T bleeds through R_T (the release)
+    this.vT *= this.kRel;
+
+    // program-dependent caps (positions 5/6): bidirectional through R_U / R_V
+    if(this.gU){
+      const q=(this.vT-this.vU)*this.gU;       // charge moved this sample
+      this.vT -= q/this.CT; this.vU += q/this.CU;
+    }
+    if(this.gV){
+      const q=(this.vT-this.vV)*this.gV;
+      this.vT -= q/this.CT; this.vV += q/this.CV;
+    }
+    if(this.vT<0) this.vT=0;
+
+    this.controlVoltage=this.outLp.process(clamp(this.vT,0,10));
+    return this.controlVoltage;
+  }
+}
+
+// ===============================
+// RemoteCutoff6386
+// Gain law from bias (unchanged). Curvature now follows the operating point:
+// near full gain the stage is clean (<1% THD, per the 670 spec), and it gets
+// progressively dirtier (odd-order dominant) as bias is driven toward cutoff.
+// ===============================
+class RemoteCutoff6386{
+  constructor(fs){
+    this.fs=fs;
+    this.hp=new OnePoleHP(fs,12);
+    this.lp=new OnePole(fs,24000);
+    this.g0=2.2;
+    this.b0=0.35;
+    this.s=0.11;
+    this.eRest=-0.27;    // mildly compressive odd-order curvature at full gain (~0.3% THD at 0 VU)
+    this.eCut=0.90;      // sinh-like (expansive) odd-order curvature as the pair nears cutoff
+    this.a2=0.02;        // residual push-pull imbalance (small even-order term)
+    this.biasSm=new OnePole(fs,18000);
+  }
+  reset(){this.hp.reset();this.lp.reset();this.biasSm.reset();}
+  gmFromBias(bias){
+    const x=(bias-this.b0)/Math.max(1e-6,this.s);
+    return 1/(1+Math.exp(x));
+  }
+  // grid-to-plate transfer shape (unity small-signal slope), curvature set by operating point
+  shape(x,gm){
+    const e=this.eRest*gm + this.eCut*(1-gm);
+    const x2=Math.min(x*x,1.5);
+    const y=x*(1+e*x2);
+    return 3*Math.tanh(y/3);          // soft ceiling for Tube Drive abuse
+  }
+  process(vin,bias,supply){
+    vin=fz(vin);
+    bias=this.biasSm.process(clamp(bias,0,2));
+    const gm=this.gmFromBias(bias);
+
+    // gain law
+    const g=this.g0*(0.01+0.99*gm)*(0.85+0.15*supply);
+
+    let x=this.shape(vin,gm);
+    const a2=this.a2*(1+(1-gm))*(0.5+0.5*supply);
+    x += a2*vin*vin;                  // tiny even-order residual (HP below removes the DC)
+    let vout=x*g;
+
+    vout=this.hp.process(this.lp.process(vout));
+    return clamp(vout,-4.0,4.0);
+  }
+  getGain(bias){
+    const gm=this.gmFromBias(bias);
+    return this.g0*(0.01+0.99*gm);
+  }
+}
+
+class MatrixMS{
+  constructor(fs){
+    this.hpM=new OnePoleHP(fs,12); this.lpM=new OnePole(fs,24000);
+    this.hpS=new OnePoleHP(fs,12); this.lpS=new OnePole(fs,24000);
+    this.hpL=new OnePoleHP(fs,12); this.lpL=new OnePole(fs,24000);
+    this.hpR=new OnePoleHP(fs,12); this.lpR=new OnePole(fs,24000);
+  }
+  reset(){this.hpM.reset();this.lpM.reset();this.hpS.reset();this.lpS.reset();this.hpL.reset();this.lpL.reset();this.hpR.reset();this.lpR.reset();}
+  forward(L,R){
+    let M=(L+R)*0.7071067811865476;
+    let S=(L-R)*0.7071067811865476;
+    M=this.hpM.process(this.lpM.process(M));
+    S=this.hpS.process(this.lpS.process(S));
+    return {M,S};
+  }
+  inverse(M,S){
+    let L=(M+S)*0.7071067811865476;
+    let R=(M-S)*0.7071067811865476;
+    L=this.hpL.process(this.lpL.process(L));
+    R=this.hpR.process(this.lpR.process(R));
+    return {L,R};
+  }
+}
+
+class Oversampler16x{
+  constructor(fs){
+    this.fs=fs;
+    this.osRate=16;
+    this.fsHigh=fs*this.osRate;
+    this.upFilters=[];
+    this.downFilters=[];
+    for(let i=0;i<4;i++){
+      const upF=new Biquad();
+      const downF=new Biquad();
+      const Q=0.54 + i*0.12;
+      upF.setLowpass(this.fsHigh, fs*0.45, Q);
+      downF.setLowpass(this.fsHigh, fs*0.45, Q);
+      this.upFilters.push(upF);
+      this.downFilters.push(downF);
+    }
+    this.lastIn=0;
+    this.prevIn=0;
+    this.upsampled=new Float32Array(this.osRate);
+  }
+  reset(){
+    this.upFilters.forEach(f=>f.reset());
+    this.downFilters.forEach(f=>f.reset());
+    this.lastIn=0; this.prevIn=0;
+  }
+  up(x){
+    const x1=this.lastIn, x2=x;
+    for(let i=0;i<this.osRate;i++){
+      const t=i/this.osRate;
+      let sample=x1 + (x2-x1)*t;
+      for(let f=0;f<this.upFilters.length;f++) sample=this.upFilters[f].process(sample);
+      this.upsampled[i]=sample;
+    }
+    this.prevIn=this.lastIn;
+    this.lastIn=x;
+    return this.upsampled;
+  }
+  down(samples){
+    let out=0;
+    for(let i=0;i<this.osRate;i++){
+      let sample=samples[i];
+      for(let f=0;f<this.downFilters.length;f++) sample=this.downFilters[f].process(sample);
+      if(i===this.osRate-1) out=sample;
+    }
+    return out;
+  }
+}
+
+class FC670Channel{
+  constructor(fs,prng,chName){
+    this.fs=fs;
+    this.prng=prng;
+    this.chName=chName;
+
+    this.oversampler=new Oversampler16x(fs);
+    this.osRate=16;
+    this.fsHigh=fs*this.osRate;
+
+    this.T_in=new XfmrBlock(this.fsHigh,prng,chName+"_Tin",{lp:22000,hp:7,nl:0.03,asym:0.03,r:0.012,tol:0.06,drive:1.10});
+    this.vmu=new RemoteCutoff6386(this.fsHigh);
+    this.T_out=new XfmrBlock(this.fsHigh,prng,chName+"_Tout",{lp:20000,hp:8,nl:0.035,asym:0.04,r:0.016,tol:0.06,drive:1.05});
+
+    this.tertiary=new T104TertiaryFeedback(fs);
+    this.T_sc=new XfmrBlock(fs,prng,chName+"_Tsc",{lp:16000,hp:18,nl:0.10,asym:0.02,r:0.010,tol:0.05,drive:1.0});
+    this.detector=new FCDetectorTC(fs);
+
+    this.biasLp=new OnePole(fs,18000);
+    this.lastOutput=0;
+    this.idleBias=0.12;
+    this.currentBias=this.idleBias;
+    this.idleGain=this.vmu.getGain(this.idleBias);
+    this.currentGain=this.idleGain;
+    this.scGain=3.0;       // sidechain input transformer / threshold pot scaling
+    this.cvToBias=2.0;     // control-amp loop gain: sets how hard the feedback loop clamps
+    this.tubeDriveDb=0;
+    this.processed=new Float32Array(this.osRate);
+  }
+  reset(){
+    this.oversampler.reset();
+    this.T_in.reset();
+    this.vmu.reset();
+    this.T_out.reset();
+    this.tertiary.reset();
+    this.T_sc.reset();
+    this.detector.reset();
+    this.biasLp.reset();
+    this.lastOutput=0;
+    this.currentBias=this.idleBias;
+    this.currentGain=this.idleGain;
+  }
+  setTC(tc){this.detector.setTC(tc);}
+  setDCBias(dcNorm){
+    // 0 = hard knee / late onset (class-B stage biased toward cutoff),
+    // 1 = soft knee / early onset. 0.5 ("CLASSIC") = factory trim.
+    dcNorm=clamp(dcNorm,0,1);
+    this.detector.setDCOffset((1-dcNorm)*0.28);
+  }
+  // --- control stage: detector + bias (run for both channels BEFORE audio so LINK can act) ---
+  control(input,threshold,supply){
+    // feedback: sidechain sees the gain-reduced signal (plate side of the 6386 stage)
+    // through the threshold pot. Pickup is taken here rather than after the 16x
+    // oversampler so the filter group delay is not inside the control loop.
+    const gmNow=this.vmu.gmFromBias(this.currentBias);
+    const plateSignal=this.vmu.shape(input,gmNow)*this.currentGain*0.10;
+    const threshLin=dbToLin(threshold);
+    const scDrive=plateSignal/Math.max(0.001,threshLin);
+    const scXfmr=this.T_sc.process(scDrive*this.scGain,supply);
+    const controlVoltage=this.detector.process(scXfmr);
+    const targetBias=this.idleBias + controlVoltage*this.cvToBias;
+    this.currentBias=this.biasLp.process(clamp(targetBias,this.idleBias,1.2));
+    return this.currentBias;
+  }
+  forceBias(b){ this.currentBias=b; this.biasLp.z=b; }
+
+  // --- audio stage ---
+  process(input,supply){
+    const upsampled=this.oversampler.up(input);
+
+    // Tube Drive slider behavior is unchanged (pre-gain into tube + trim)
+    const tdDb=Math.max(0,this.tubeDriveDb||0);
+    const tdLin=dbToLin(tdDb);
+    const tdTrim=dbToLin(-tdDb*0.70);
+
+    for(let i=0;i<this.osRate;i++){
+      let x=upsampled[i];
+      x=this.T_in.process(x,supply);
+      x=this.vmu.process(x*tdLin,this.currentBias,supply);
+      x*=tdTrim;
+      x=this.T_out.process(x,supply);
+      this.processed[i]=x;
+    }
+    const output=this.oversampler.down(this.processed);
+    this.lastOutput=output;
+    this.currentGain=this.vmu.getGain(this.currentBias);
+    return output;
+  }
+  getGR(){
+    // referenced to the idle operating point so the meter reads 0 with no signal
+    const gr=this.idleGain/Math.max(1e-4,this.currentGain);
+    return Math.max(0,20*Math.log10(gr));
+  }
+}
+
+// ===== FFT Preserve Character (Match EQ) =====
+class FFT{
+  constructor(N){
+    this.N=N|0;
+    this.L=Math.round(Math.log2(this.N));
+    this.rev=new Uint32Array(this.N);
+    for(let i=0;i<this.N;i++){
+      let x=i,y=0;
+      for(let b=0;b<this.L;b++){y=(y<<1)|(x&1);x>>=1;}
+      this.rev[i]=y;
+    }
+    this.cos=new Float32Array(this.N>>1);
+    this.sin=new Float32Array(this.N>>1);
+    for(let k=0;k<(this.N>>1);k++){
+      const ang=-TAU*k/this.N;
+      this.cos[k]=Math.cos(ang);
+      this.sin[k]=Math.sin(ang);
+    }
+  }
+  fft(re,im,inverse=false){
+    const N=this.N, rev=this.rev;
+    for(let i=0;i<N;i++){
+      const j=rev[i];
+      if(j>i){
+        let tr=re[i]; re[i]=re[j]; re[j]=tr;
+        let ti=im[i]; im[i]=im[j]; im[j]=ti;
+      }
+    }
+    for(let len=2; len<=N; len<<=1){
+      const half=len>>1;
+      const step=N/len;
+      for(let i=0;i<N;i+=len){
+        for(let j=0;j<half;j++){
+          const k=(j*step)|0;
+          const wr=this.cos[k];
+          const wi=inverse ? -this.sin[k] : this.sin[k];
+          const i0=i+j, i1=i0+half;
+          const ur=re[i0], ui=im[i0];
+          const vr=re[i1]*wr - im[i1]*wi;
+          const vi=re[i1]*wi + im[i1]*wr;
+          re[i0]=ur+vr; im[i0]=ui+vi;
+          re[i1]=ur-vr; im[i1]=ui-vi;
+        }
+      }
+    }
+    if(inverse){
+      const inv=1/N;
+      for(let i=0;i<N;i++){ re[i]*=inv; im[i]*=inv; }
+    }
+  }
+}
+
+class PreserveMatchFFT{
+  constructor(fs,N=2048,hop=256){
+    this.fs=fs;
+    this.N=N;
+    this.hop=hop;
+    this.fft=new FFT(N);
+
+    this.ringIn=new Float32Array(N);
+    this.ringWet=new Float32Array(N);
+    this.rp=0;
+
+    this.ola=new Float32Array(N);
+    this.olaRead=0;
+
+    this.win=new Float32Array(N);
+    for(let n=0;n<N;n++) this.win[n]=0.5 - 0.5*Math.cos(TAU*n/(N-1)); // Hann
+
+    const norm=new Float32Array(N);
+    for(let off=0; off<N; off+=hop){
+      for(let n=0;n<N;n++){
+        norm[(n+off)%N] += this.win[n]*this.win[n];
+      }
+    }
+    this.normInv=new Float32Array(N);
+    for(let i=0;i<N;i++) this.normInv[i]=1/(norm[i]+1e-12);
+
+    this.reIn=new Float32Array(N);
+    this.imIn=new Float32Array(N);
+    this.reW=new Float32Array(N);
+    this.imW=new Float32Array(N);
+
+    this.gSpec=new Float32Array(N);
+    for(let i=0;i<N;i++) this.gSpec[i]=1.0;
+
+    this.samples=0;
+    this.hc=0;
+
+    this.maxBoost=dbToLin(18);
+    this.maxCut=dbToLin(-18);
+    this.gSmooth=0.10;
+  }
+
+  reset(){
+    this.ringIn.fill(0);
+    this.ringWet.fill(0);
+    this.ola.fill(0);
+    this.rp=0;
+    this.olaRead=0;
+    for(let i=0;i<this.N;i++) this.gSpec[i]=1.0;
+    this.samples=0;
+    this.hc=0;
+  }
+
+  _getChrono(ring,out){
+    let idx=this.rp;
+    for(let n=0;n<this.N;n++){
+      out[n]=ring[idx];
+      idx++; if(idx>=this.N) idx=0;
+    }
+  }
+
+  process(xInRaw,xWet,amt,keepLevel){
+    if(keepLevel===undefined) keepLevel=true;
+    if(amt<=1e-6){
+      this.ringIn[this.rp]=xInRaw;
+      this.ringWet[this.rp]=xWet;
+      this.rp++; if(this.rp>=this.N) this.rp=0;
+      this.samples++;
+      return xWet;
+    }
+
+    this.ringIn[this.rp]=xInRaw;
+    this.ringWet[this.rp]=xWet;
+    this.rp++; if(this.rp>=this.N) this.rp=0;
+    this.samples++;
+
+    let y=this.ola[this.olaRead]*this.normInv[this.olaRead];
+    this.ola[this.olaRead]=0;
+    this.olaRead++; if(this.olaRead>=this.N) this.olaRead=0;
+
+    if(this.samples<this.N) return xWet;
+
+    this.hc++;
+    if(this.hc<this.hop) return y;
+    this.hc=0;
+
+    this._getChrono(this.ringIn,this.reIn);
+    this._getChrono(this.ringWet,this.reW);
+    for(let n=0;n<this.N;n++){
+      const w=this.win[n];
+      this.reIn[n]*=w; this.imIn[n]=0;
+      this.reW[n]*=w;  this.imW[n]=0;
+    }
+
+    this.fft.fft(this.reIn,this.imIn,false);
+    this.fft.fft(this.reW,this.imW,false);
+
+    const eps=1e-12;
+    const N=this.N;
+    const half=N>>1;
+
+    // Broadband level term. With keepLevel=false the match is spectral shape only:
+    // divide every bin by the frame energy ratio so the corrected frame carries the
+    // same energy as the compressed signal and Makeup owns the volume.
+    let levelInv=1.0;
+    if(!keepLevel){
+      let eA=0,eB=0;
+      for(let k=1;k<=half;k++){
+        eA += this.reIn[k]*this.reIn[k] + this.imIn[k]*this.imIn[k];
+        eB += this.reW[k]*this.reW[k]  + this.imW[k]*this.imW[k];
+      }
+      levelInv=Math.sqrt((eB+eps)/(eA+eps));
+    }
+
+    for(let k=0;k<=half;k++){
+      const aRe=this.reIn[k], aIm=this.imIn[k];
+      const bRe=this.reW[k],  bIm=this.imW[k];
+      const magA=aRe*aRe + aIm*aIm + eps;
+      const magB=bRe*bRe + bIm*bIm + eps;
+
+      let g=Math.sqrt(magA/magB)*levelInv;
+      if(g>this.maxBoost) g=this.maxBoost;
+      if(g<this.maxCut)   g=this.maxCut;
+
+      g=Math.exp(Math.log(g)*amt);
+
+      const gs=this.gSpec[k];
+      g=(1-this.gSmooth)*g + this.gSmooth*gs;
+
+      this.gSpec[k]=g;
+      if(k>0 && k<half) this.gSpec[N-k]=g;
+    }
+
+    for(let k=0;k<N;k++){
+      const g=this.gSpec[k];
+      this.reW[k]*=g;
+      this.imW[k]*=g;
+    }
+
+    this.fft.fft(this.reW,this.imW,true);
+
+    let widx=this.olaRead;
+    for(let n=0;n<N;n++){
+      this.ola[widx] += this.reW[n]*this.win[n];
+      widx++; if(widx>=N) widx=0;
+    }
+
+    return y;
+  }
+}
+
+class FC670Processor{
+  constructor(fs){
+    this.fs=fs;
+    this.prng=new PRNG(77777);
+    this.chA=new FC670Channel(fs,this.prng,"A");
+    this.chB=new FC670Channel(fs,this.prng,"B");
+    this.matrix=new MatrixMS(fs);
+
+    this.pL=new PreserveMatchFFT(fs,2048,256);
+    this.pR=new PreserveMatchFFT(fs,2048,256);
+
+    this.sagLp=new OnePole(fs,0.65);
+    this.sag=0;
+    this.ripplePhase=0;
+    this.outTrim=dbToLin(-14);
+    this.fade=0;
+    this.fadeInc=1/(fs*0.030);
+
+    this.grA=0; this.grB=0;
+
+    this.params={
+      bypass:0,
+      inGainA:0,inGainB:0,
+      thresholdA:-20,thresholdB:-20,
+      dcThreshA:0.5,dcThreshB:0.5,
+      timeA:3,timeB:3,
+      outGainA:0,outGainB:0,
+      tubeDriveA:0,tubeDriveB:0,
+      headroomA:0,headroomB:0,
+      preserveA:0,preserveB:0,
+      preserveVolA:1,preserveVolB:1,
+      mode:0,link:1,analog:1
+    };
+  }
+
+  reset(){
+    this.chA.reset(); this.chB.reset();
+    this.matrix.reset();
+    this.pL.reset(); this.pR.reset();
+    this.sagLp.reset();
+    this.sag=0;
+    this.ripplePhase=0;
+    this.fade=0;
+    this.grA=0; this.grB=0;
+  }
+
+  setParam(name,value){ this.params[name]=value; }
+
+  process(inL,inR,outL,outR,bufferSize){
+    const p=this.params;
+
+    if(Math.round(p.bypass)===1){
+      for(let i=0;i<bufferSize;i++){ outL[i]=fz(inL[i]); outR[i]=fz(inR[i]); }
+      this.grA=0; this.grB=0;
+      return;
+    }
+
+    const mode=Math.round(p.mode);
+    const link=Math.round(p.link);
+    const analogOn=Math.round(p.analog);
+
+    const inGainA=dbToLin(p.inGainA);
+    const inGainB=dbToLin(p.inGainB);
+    const makeupA=dbToLin(p.outGainA);
+    const makeupB=dbToLin(p.outGainB);
+
+    this.chA.setTC(Math.round(clamp(p.timeA,1,6)));
+    this.chB.setTC(Math.round(clamp(p.timeB,1,6)));
+    this.chA.setDCBias(clamp(p.dcThreshA,0,1));
+    this.chB.setDCBias(clamp(p.dcThreshB,0,1));
+
+    const tdA=Math.max(0,p.tubeDriveA||0);
+    const tdB=(link===1)?tdA:Math.max(0,p.tubeDriveB||0);
+    this.chA.tubeDriveDb=tdA;
+    this.chB.tubeDriveDb=tdB;
+
+    const hrA=Math.max(0,p.headroomA||0);
+    const hrB=(link===1)?hrA:Math.max(0,p.headroomB||0);
+    const hrLinA=dbToLin(-hrA);
+    const hrLinB=dbToLin(-hrB);
+
+    const presA=clamp(p.preserveA||0,0,1);
+    const presB=(link===1)?presA:clamp(p.preserveB||0,0,1);
+    const presVolA=(p.preserveVolA===undefined)?true:(p.preserveVolA!==0);
+    const presVolB=(link===1)?presVolA:((p.preserveVolB===undefined)?true:(p.preserveVolB!==0));
+
+    for(let i=0;i<bufferSize;i++){
+      const rawL=fz(inL[i]);
+      const rawR=fz(inR[i]);
+
+      let L=rawL*hrLinA;
+      let R=rawR*hrLinB;
+
+      L*=inGainA;
+      R*=inGainB;
+
+      this.ripplePhase += (TAU*60)/this.fs;
+      if(this.ripplePhase>TAU) this.ripplePhase-=TAU;
+
+      const supply=clamp(1.0 - 0.20*this.sag, 0.78, 1.05);
+
+      if(analogOn){
+        const hum=0.00008*(Math.sin(this.ripplePhase)+0.25*Math.sin(2*this.ripplePhase));
+        const noise=0.00003*this.prng.next();
+        L += hum+noise;
+        R += hum+noise;
+      }
+
+      let A=L, B=R;
+      if(mode===1){
+        const ms=this.matrix.forward(L,R);
+        A=ms.M; B=ms.S;
+      }
+
+      const bA=this.chA.control(A,p.thresholdA,supply);
+      const bB=this.chB.control(B,p.thresholdB,supply);
+      if(link===1){
+        // stereo link = both gain stages follow the larger control voltage
+        const maxBias=Math.max(bA,bB);
+        this.chA.forceBias(maxBias);
+        this.chB.forceBias(maxBias);
+      }
+      let yA=this.chA.process(A,supply);
+      let yB=this.chB.process(B,supply);
+
+      yA = yA * this.outTrim * makeupA;
+      yB = yB * this.outTrim * makeupB;
+
+      let wetL=yA, wetR=yB;
+      if(mode===1){
+        const lr=this.matrix.inverse(yA,yB);
+        wetL=lr.L; wetR=lr.R;
+      }
+
+      const load=clamp(0.15*(this.chA.currentBias+this.chB.currentBias) + 0.10*(Math.abs(wetL)+Math.abs(wetR)),0,1);
+      this.sag=this.sagLp.process(load);
+
+      this.grA=this.chA.getGR();
+      this.grB=this.chB.getGR();
+
+      this.fade=Math.min(1,this.fade+this.fadeInc);
+      wetL*=this.fade;
+      wetR*=this.fade;
+
+      // Preserve Character FFT match (after chain)
+      wetL = this.pL.process(rawL, wetL, presA, presVolA);
+      wetR = this.pR.process(rawR, wetR, presB, presVolB);
+
+      wetL=clamp(wetL,-1,1);
+      wetR=clamp(wetR,-1,1);
+
+      outL[i]=wetL;
+      outR[i]=wetR;
+    }
+  }
+}
+
+class FC670WorkletProcessor extends AudioWorkletProcessor{
+  constructor(){
+    super();
+    this.fc670=new FC670Processor(sampleRate);
+    this.meterCounter=0;
+    this.port.onmessage=(e)=>{
+      if(e.data.type==='param') this.fc670.setParam(e.data.name,e.data.value);
+      else if(e.data.type==='reset') this.fc670.reset();
+    };
+  }
+  process(inputs,outputs){
+    const input=inputs[0];
+    const output=outputs[0];
+    if(!input || !output || !input[0] || !output[0]) return true;
+
+    const inL=input[0];
+    const inR=input[1]||input[0];
+    const outL=output[0];
+    const outR=output[1]||output[0];
+    const len=outL.length;
+
+    this.fc670.process(inL,inR,outL,outR,len);
+
+    this.meterCounter++;
+    if(this.meterCounter>=4){
+      this.meterCounter=0;
+      this.port.postMessage({type:'meters', grA:this.fc670.grA, grB:this.fc670.grB});
+    }
+    return true;
+  }
+}
+registerProcessor('fc670-processor', FC670WorkletProcessor);
+`;
+
+  async function ensureEngine() {
+    if(engineReady) return;
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AudioContextClass();
+      audioCtx.onstatechange = () => { if (audioCtx.state === 'suspended') audioCtx.resume(); };
+
+      const dataUri = 'data:application/javascript;base64,' + btoa(unescape(encodeURIComponent(workletCode)));
+      await audioCtx.audioWorklet.addModule(dataUri);
+
+      workletNode = new AudioWorkletNode(audioCtx, 'fc670-processor', {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [2]
+      });
+
+      workletNode.port.onmessage = (e) => {
+        if (e.data.type === 'meters') { grA = e.data.grA; grB = e.data.grB; }
+      };
+
+      workletNode.connect(audioCtx.destination);
+      engineReady = true;
+      setEngine("ENGINE READY", true);
+      pushUIToDSP();
+
+      setInterval(() => {
+        if(!engineReady) return;
+        setNeedle($("needleL"), meterL.process(grA));
+        setNeedle($("needleR"), meterR.process(grB));
+        $("grValueA").textContent = grA.toFixed(1) + " dB";
+        $("grValueB").textContent = grB.toFixed(1) + " dB";
+        $("grBarA").style.width = Math.min(100, (grA / 30) * 100) + "%";
+        $("grBarB").style.width = Math.min(100, (grB / 30) * 100) + "%";
+      }, 50);
+
+    } catch(err) {
+      setEngine("WORKLET ERROR: " + err.message, false);
+      console.error(err);
+    }
+  }
+
+  function pushUIToDSP(){
+    if(!workletNode) return;
+
+    const link = $("link").checked;
+    const analog = $("analog").checked;
+    const mode = parseInt($("modeSel").value) || 0;
+    const bypass = $("bypass").checked;
+
+    const send = (name, value) => workletNode.port.postMessage({ type:'param', name, value });
+
+    send("bypass", bypass ? 1 : 0);
+
+    send("inGainA", parseFloat($("inDb1").value));
+    send("thresholdA", -4*parseFloat($("thDb1").value));   // panel 0..10 -> sidechain level (0 = no limiting)
+    send("timeA", parseInt($("tc1").value));
+    send("dcThreshA", parseFloat($("dc1").value));
+    send("outGainA", parseFloat($("outDb1").value));
+    send("tubeDriveA", parseFloat($("tube1").value) || 0);
+    send("preserveA", (parseFloat($("pres1").value) || 0) / 100);
+    send("preserveVolA", $("presVol1").checked ? 1 : 0);
+    send("headroomA", parseFloat($("head1").value) || 0);
+
+    if(link){
+      send("inGainB", parseFloat($("inDb1").value));
+      send("thresholdB", -4*parseFloat($("thDb1").value));
+      send("timeB", parseInt($("tc1").value));
+      send("dcThreshB", parseFloat($("dc1").value));
+      send("outGainB", parseFloat($("outDb1").value));
+      send("tubeDriveB", parseFloat($("tube1").value) || 0);
+      send("preserveB", (parseFloat($("pres1").value) || 0) / 100);
+      send("preserveVolB", $("presVol1").checked ? 1 : 0);
+      send("headroomB", parseFloat($("head1").value) || 0);
+    } else {
+      send("inGainB", parseFloat($("inDb2").value));
+      send("thresholdB", -4*parseFloat($("thDb2").value));
+      send("timeB", parseInt($("tc2").value));
+      send("dcThreshB", parseFloat($("dc2").value));
+      send("outGainB", parseFloat($("outDb2").value));
+      send("tubeDriveB", parseFloat($("tube2").value) || 0);
+      send("preserveB", (parseFloat($("pres2").value) || 0) / 100);
+      send("preserveVolB", $("presVol2").checked ? 1 : 0);
+      send("headroomB", parseFloat($("head2").value) || 0);
+    }
+
+    send("link", link ? 1 : 0);
+    send("analog", analog ? 1 : 0);
+    send("mode", mode);
+  }
+
+  // knob drag
+  document.querySelectorAll(".knob-hit").forEach(hit => {
+    const outer = hit.parentElement;
+    const input = outer.querySelector(".knob-input");
+    const dial  = outer.querySelector(".knob-dial");
+    const id    = input.id;
+    const valSpan = $("val-" + id);
+
+    let dragging=false, startY=0, startVal=0;
+
+    const update = (v) => {
+      input.value = v;
+      const min = parseFloat(input.min), max = parseFloat(input.max);
+      const pct = (v - min)/(max - min);
+      dial.style.transform = "rotate(" + (-135 + pct*270) + "deg)";
+      if(valSpan){
+        if(id.startsWith("tc")) valSpan.textContent = Math.round(v);
+        else if(id.startsWith("dc")) {
+          if(Math.abs(v - 0.5) < 0.01) valSpan.textContent = "CLASSIC";
+          else valSpan.textContent = Math.round(v*100)+"%";
+        } else valSpan.textContent = v.toFixed(1);
+      }
+      pushUIToDSP();
+    };
+
+    hit.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      hit.setPointerCapture(e.pointerId);
+      dragging=true;
+      startY=e.clientY;
+      startVal=parseFloat(input.value);
+    });
+
+    hit.addEventListener("pointermove", e => {
+      if(!dragging) return;
+      const sens = e.shiftKey ? 0.15 : 0.5;
+      const delta = (startY - e.clientY) * sens;
+
+      const min = parseFloat(input.min), max = parseFloat(input.max);
+      const step = parseFloat(input.step) || 0.1;
+
+      let nv = startVal + delta * (max - min) / 200;
+      nv = Math.round(nv/step)*step;
+      nv = Math.max(min, Math.min(max, nv));
+      update(nv);
+
+      if($("link").checked){
+        const partner = id.endsWith("1") ? id.slice(0,-1)+"2" : id.slice(0,-1)+"1";
+        const partnerInput = $(partner);
+        const partnerDial  = $("dial-"+partner);
+        const partnerVal   = $("val-"+partner);
+        if(partnerInput && partnerDial){
+          partnerInput.value = nv;
+          const pct = (nv - min)/(max - min);
+          partnerDial.style.transform = "rotate(" + (-135 + pct*270) + "deg)";
+          if(partnerVal){
+            if(partner.startsWith("tc")) partnerVal.textContent = Math.round(nv);
+            else if(partner.startsWith("dc")){
+              if(Math.abs(nv - 0.5) < 0.01) partnerVal.textContent = "CLASSIC";
+              else partnerVal.textContent = Math.round(nv*100)+"%";
+            } else partnerVal.textContent = nv.toFixed(1);
+          }
+        }
+      }
+    });
+
+    const endDrag=()=>{dragging=false;};
+    hit.addEventListener("pointerup", endDrag);
+    hit.addEventListener("pointercancel", endDrag);
+
+    update(parseFloat(input.value));
+  });
+
+  // sliders
+  ["tube1","tube2","pres1","pres2","head1","head2"].forEach(id => {
+    const sl=$(id);
+    const valSpan=$("val-"+id);
+    const fmt = (v) => id.startsWith("pres") ? (Math.round(v) + "%") : (v.toFixed(1) + " dB");
+    valSpan.textContent = fmt(parseFloat(sl.value));
+
+    sl.addEventListener("input", () => {
+      const v=parseFloat(sl.value);
+      valSpan.textContent = fmt(v);
+      if($("link").checked){
+        const partner=id.endsWith("1") ? id.slice(0,-1)+"2" : id.slice(0,-1)+"1";
+        const psl=$(partner);
+        const pval=$("val-"+partner);
+        psl.value=v;
+        pval.textContent = fmt(v);
+      }
+      pushUIToDSP();
+    });
+    sl.addEventListener("change", pushUIToDSP);
+  });
+
+  ["presVol1","presVol2"].forEach(id => {
+    $(id).addEventListener("change", () => {
+      if($("link").checked){
+        const partner = id.endsWith("1") ? "presVol2" : "presVol1";
+        $(partner).checked = $(id).checked;
+      }
+      pushUIToDSP();
+    });
+  });
+
+  $("modeSel").addEventListener("change", pushUIToDSP);
+  $("bypass").addEventListener("change", pushUIToDSP);
+  $("analog").addEventListener("change", pushUIToDSP);
+
+  $("link").addEventListener("change", () => {
+    if($("link").checked){
+      ["inDb","thDb","outDb","tc","dc"].forEach(base=>{
+        const src=$(base+"1"), dst=$(base+"2");
+        const dstDial=$("dial-"+base+"2");
+        const dstVal=$("val-"+base+"2");
+        const v=parseFloat(src.value);
+        dst.value=v;
+        const min=parseFloat(dst.min), max=parseFloat(dst.max);
+        const pct=(v-min)/(max-min);
+        dstDial.style.transform="rotate("+(-135+pct*270)+"deg)";
+        if(base==="tc") dstVal.textContent=Math.round(v);
+        else if(base==="dc"){
+          if(Math.abs(v-0.5)<0.01) dstVal.textContent="CLASSIC";
+          else dstVal.textContent=Math.round(v*100)+"%";
+        } else dstVal.textContent=v.toFixed(1);
+      });
+      ["tube","pres","head"].forEach(base=>{
+        const src=$(base+"1"), dst=$(base+"2");
+        const dstVal=$("val-"+base+"2");
+        dst.value=src.value;
+        const v=parseFloat(src.value);
+        dstVal.textContent = base==="pres" ? (Math.round(v)+"%") : (v.toFixed(1)+" dB");
+      });
+      $("presVol2").checked = $("presVol1").checked;
+    }
+    pushUIToDSP();
+  });
+
+  // Transport
+  $("loadBtn").addEventListener("click", () => $("fileInput").click());
+
+  $("fileInput").addEventListener("change", async (e) => {
+    const f=e.target.files[0];
+    if(!f) return;
+    await ensureEngine();
+    const ab=await f.arrayBuffer();
+    audioBuffer = await audioCtx.decodeAudioData(ab);
+    setIO(f.name,true);
+    setRun("BUFFER LOADED",true);
+  });
+
+  $("micBtn").addEventListener("click", async () => {
+    await ensureEngine();
+    if(sourceNode){ try{sourceNode.disconnect();}catch(_){} sourceNode=null; }
+    try{
+      micStream = await navigator.mediaDevices.getUserMedia({audio:true});
+      sourceNode = audioCtx.createMediaStreamSource(micStream);
+      sourceNode.connect(workletNode);
+      setIO("MICROPHONE",true);
+      setRun("LIVE INPUT",true);
+    }catch(err){
+      setIO("MIC ERROR: "+err.message,false);
+    }
+  });
+
+  $("playBtn").addEventListener("click", async () => {
+    if(!audioBuffer){ alert("Load a file first"); return; }
+    await ensureEngine();
+    if(sourceNode){ try{sourceNode.disconnect();}catch(_){} sourceNode=null; }
+    sourceNode = audioCtx.createBufferSource();
+    sourceNode.buffer = audioBuffer;
+    sourceNode.loop = true;
+    sourceNode.connect(workletNode);
+    sourceNode.start(0);
+    setRun("PLAYING",true);
+  });
+
+  $("stopBtn").addEventListener("click", () => {
+    if(sourceNode){
+      try{ sourceNode.stop(); }catch(_){}
+      try{ sourceNode.disconnect(); }catch(_){}
+      sourceNode=null;
+    }
+    if(micStream){
+      micStream.getTracks().forEach(t=>t.stop());
+      micStream=null;
+    }
+    setRun("STOPPED",false);
+  });
+
+  setEngine("CLICK LOAD OR MIC", true);
+  setRun("STANDBY", false);
+  setIO("â€”", false);
+})();
+</script>
+</body>
+</html>
