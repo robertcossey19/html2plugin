@@ -128,6 +128,8 @@ function report(m) {
 }
 
 if (require.main === module) {
+  // jsdom pages keep async work (MutationObservers, Tailwind JIT) alive past window.close(); their late rejections are page noise, not forge failures
+  process.on('unhandledRejection', e => console.warn('[page async noise after boot] ' + String(e && e.message || e).slice(0, 200)));
   (async () => {
     const input = process.argv[2]; if (!input || input.startsWith('--')) { console.error('usage: node forge/index.js <input.html> --out <dir> [--name X] [--vendor Y] [--slug z]'); process.exit(2); }
     const html = fs.readFileSync(input, 'utf8'); const out = arg('out', path.join('build', 'plugin'));
