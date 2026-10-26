@@ -71,7 +71,7 @@ int main (int argc, char** argv)
     const juce::var manifest = juce::JSON::parse (asset ("manifest.json"));
     const int expectedParams = manifest["params"].getArray() ? manifest["params"].getArray()->size() : 0;
 
-    juce::AudioPluginFormatManager fm; fm.addDefaultFormats();
+    juce::AudioPluginFormatManager fm; juce::addDefaultFormatsToManager (fm);   // JUCE >= 8.0.9 API
     juce::OwnedArray<juce::PluginDescription> descs; juce::KnownPluginList kpl;
     for (auto* f : fm.getFormats()) kpl.scanAndAddFile (argv[1], true, descs, *f);
     printf ("== Load ==\n"); CHECK (descs.size() > 0, "plugin scanned: %d description(s)", descs.size()); if (descs.isEmpty()) return 1;
