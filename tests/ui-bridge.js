@@ -1,4 +1,5 @@
 // Host -> UI: forge the page, then boot it again with shim+bridge and drive the page's own controls from "the host".
+process.on('unhandledRejection', e => console.warn('[page async noise] ' + String(e && e.message || e).slice(0, 120)));
 const fs = require('fs'); const { JSDOM } = require('jsdom'); const { forge } = require('../forge/index.js');
 (async () => {
   const html = fs.readFileSync(__dirname + '/analogexact.html', 'utf8');

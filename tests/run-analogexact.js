@@ -1,4 +1,5 @@
 // Sanity harness: run the untouched ANALOGEXACT worklet through the engine with the page's own graph topology.
+process.on('unhandledRejection', e => console.warn('[page async noise] ' + String(e && e.message || e).slice(0, 120)));
 const fs = require('fs');
 const { Context } = require('../engine/webaudio-engine.js');
 const sr = 48000;

@@ -1,4 +1,5 @@
 const fs=require('fs'); const {Context}=require('../engine/webaudio-engine.js'); const sr=48000; const e=new Context(sr); e.addModule(fs.readFileSync(__dirname+'/analogexact.worklet.js','utf8'));
+process.on('unhandledRejection', e => console.warn('[page async noise] ' + String(e && e.message || e).slice(0, 120)));
 e.setHostParamNames(['inDb','outDb','monitor','speed']);
 const rms=(a)=>{let s=0;for(const v of a)s+=v*v;return 20*Math.log10(Math.sqrt(s/a.length)+1e-30)};
 const run=()=>{const n=sr/2,i=new Float32Array(n),o=new Float32Array(n),o2=new Float32Array(n);for(let k=0;k<n;k++)i[k]=0.1*Math.sin(2*Math.PI*1000*k/sr);e.render(i,i,o,o2,n);return rms(o.subarray(n-8192))};

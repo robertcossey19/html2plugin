@@ -1,4 +1,5 @@
 // Golden master for a forged project: run the shipped engine + worklets + bootOps under Node/V8 exactly the way the plugin does,
+process.on('unhandledRejection', e => console.warn('[page async noise] ' + String(e && e.message || e).slice(0, 120)));
 // and write golden.json for HostTest (--golden). Usage: node tests/golden.js <projectDir> [outFile]
 const fs = require('fs'); const path = require('path');
 const dir = process.argv[2]; const out = process.argv[3] || path.join(dir, 'golden.json');

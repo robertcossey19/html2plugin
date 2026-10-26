@@ -24,8 +24,9 @@
   function flush() { flushScheduled = false; if (!queue.length) return; const q = queue; queue = []; try { transport.send(q); } catch (e) { log('send failed', e); } }
 
   /* ---------------- clock: engine time pushed by native, interpolated with performance.now() ---------------- */
-  let engineTime = 0, engineTimeAt = performance.now();
-  function now() { return engineTime + (performance.now() - engineTimeAt) / 1000; }
+  let engineTime = 0, engineTimeAt = performance.now(), lastNow = 0;
+  // monotonic: the engine clock arrives in bursts (and faster than wall time in offline hosts/tests); currentTime must never run backwards
+  function now() { const t = engineTime + (performance.now() - engineTimeAt) / 1000; if (t > lastNow) lastNow = t; return lastNow; }
 
   /* ---------------- ids / registry ---------------- */
   let nextId = 1; const nodesById = new Map(); const analyserSnap = new Map();
@@ -200,13 +201,23 @@
   window.AudioContext = AudioContextShim; window.webkitAudioContext = AudioContextShim;
   window.AudioWorkletNode = AudioWorkletNodeShim; window.AudioBuffer = AudioBufferShim; window.AudioParam = AudioParamShim; window.AudioNode = AudioNodeShim;
   window.AudioWorklet = function () { }; window.MediaStream = FakeStream;
-  if (!navigator.mediaDevices) { try { Object.defineProperty(navigator, 'mediaDevices', { value: {}, configurable: true }); } catch (e) { navigator.mediaDevices = {}; } }
+  // Microphone -> plugin input. Replace navigator.mediaDevices wholesale at the PROTOTYPE level: an expando set on the real
+  // MediaDevices wrapper can be dropped by WebKit's GC (wrapper re-created without own properties), which left the page
+  // waiting forever on the real getUserMedia inside the plugin. A plain object held by this closure cannot be lost.
   const fakeGUM = () => Promise.resolve(new FakeStream());
-  try { navigator.mediaDevices.getUserMedia = fakeGUM; } catch (e) { }
-  if (navigator.mediaDevices.getUserMedia !== fakeGUM) { try { Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: fakeGUM, configurable: true, writable: true }); } catch (e) { } }
-  if (navigator.mediaDevices.getUserMedia !== fakeGUM) { try { Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia: fakeGUM }, configurable: true }); } catch (e) { } }
-  navigator.mediaDevices.enumerateDevices = () => Promise.resolve([{ deviceId: 'default', kind: 'audioinput', label: 'Plugin input', groupId: 'h2p' }]);
-  navigator.mediaDevices.addEventListener = navigator.mediaDevices.addEventListener || function () { };
+  const fakeDevices = {
+    getUserMedia: fakeGUM,
+    enumerateDevices: () => Promise.resolve([{ deviceId: 'default', kind: 'audioinput', label: 'Plugin input', groupId: 'h2p', toJSON() { return this; } }]),
+    getSupportedConstraints: () => ({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: true, channelCount: true }),
+    getDisplayMedia: () => Promise.reject(new Error('getDisplayMedia is not available inside a plugin')),
+    addEventListener() { }, removeEventListener() { }, dispatchEvent() { return true; }, ondevicechange: null
+  };
+  let installed = false;
+  try { const NP = window.Navigator && window.Navigator.prototype; if (NP) { Object.defineProperty(NP, 'mediaDevices', { get: () => fakeDevices, configurable: true }); installed = navigator.mediaDevices === fakeDevices; } } catch (e) { }
+  if (!installed) { try { Object.defineProperty(navigator, 'mediaDevices', { get: () => fakeDevices, configurable: true }); installed = navigator.mediaDevices === fakeDevices; } catch (e) { } }
+  if (!installed) { try { navigator.mediaDevices.getUserMedia = fakeGUM; } catch (e) { } }
+  if (window.MediaDevices && window.MediaDevices.prototype) { try { window.MediaDevices.prototype.getUserMedia = fakeGUM; } catch (e) { } }  // belt and braces
+  if (navigator.getUserMedia || navigator.webkitGetUserMedia) { const legacy = (c, ok, fail) => { fakeGUM().then(ok, fail); }; try { navigator.getUserMedia = legacy; navigator.webkitGetUserMedia = legacy; } catch (e) { } }
   // Blob URLs for worklet modules: keep real behaviour, the forge has already matched module text to the registry
   window.__h2p = { version: 1, now, nodesById, receive, contexts: AudioContextShim.instances, flush, emit, onHostParam: null, serializeMessage, reviveMessage,
     // Host -> UI: let the host push a parameter change the way the page's own UI would (best-effort; the forge wires setters when it finds them)

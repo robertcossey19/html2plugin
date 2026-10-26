@@ -1,4 +1,5 @@
 // Validate shim -> ops -> engine contract without a browser: fake window, run page-style graph code against the shim, replay in engine.
+process.on('unhandledRejection', e => console.warn('[page async noise] ' + String(e && e.message || e).slice(0, 120)));
 const fs = require('fs'); const vm = require('vm');
 const { Context } = require('../engine/webaudio-engine.js');
 const sr = 48000; const engine = new Context(sr); const worklet = fs.readFileSync(__dirname + '/analogexact.worklet.js', 'utf8'); engine.addModule(worklet);
