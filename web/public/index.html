@@ -180,8 +180,9 @@ $('clear').onclick = () => { $('html').value = ''; $('url').value = ''; $('slug'
 $('html').addEventListener('input', () => {
   const h = $('html').value; const notes = [];
   if (!h.trim()) { $('precheck').textContent = ''; return; }
-  if (!/registerProcessor\s*\(/.test(h)) notes.push(['bad', 'no registerProcessor( found — the AudioWorklet module must be inline in the page (template literal, Blob or <script type="worklet">)']);
-  if (!/addModule\s*\(/.test(h)) notes.push(['bad', 'no audioWorklet.addModule( call found']);
+  const packed = /DecompressionStream|pako|inflate|fflate|_B64\b|atob\s*\(/.test(h);
+  if (!/registerProcessor\s*\(/.test(h)) notes.push([packed ? 'ok' : 'warn', packed ? 'worklet code is packed (gzip/base64) — fine, the forge inflates the page and captures the module at boot' : 'no registerProcessor( visible in the HTML — if the module is built at runtime (packed/minified) the forge still captures it at boot; if it is a separate .js file, inline it']);
+  if (!/addModule\s*\(/.test(h) && !packed) notes.push(['warn', 'no audioWorklet.addModule( visible in the HTML (may be inside packed code)']);
   if (/createScriptProcessor\s*\(/.test(h)) notes.push(['bad', 'uses ScriptProcessorNode — not supported; port the processing to an AudioWorkletProcessor first']);
   const ext = (h.match(/<script\b[^>]*src=["'](https?:[^"']+)["']/gi) || []).map(x => x.match(/src=["']([^"']+)/)[1]);
   if (ext.length) notes.push(['', `${ext.length} external script(s) will be inlined at build time: ${ext.join(', ')}`]);

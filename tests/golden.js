@@ -21,7 +21,11 @@ function mag(y, f) { let re = 0, im = 0; const N = y.length; for (let n = 0; n <
 function thd(y, f0) { const fund = mag(y, f0); let h = 0; for (let k = 2; k <= 10; k++) if (f0 * k < sr / 2) { const m = mag(y, f0 * k); h += m * m; } return 100 * Math.sqrt(h) / fund; }
 const e = fresh(); const t0 = Date.now(); const y = tail(run(e, 1000, -20, 1.0), 16384); const secs = (Date.now() - t0) / 1000;
 const g = { sampleRate: sr, block, inputDbfs: -20, outputDbfs: +rmsDb(y).toFixed(3), thdPct: +thd(y, 1000).toFixed(4), nodeRealtimePercent: +(secs * 100).toFixed(1), sweep: [] };
-const cands = manifest.params.filter(p => p.type !== 'bool' || true).slice(0, 8);
+// Sweep candidates. UI-state parameters (ui_*: knob positions / segmented switches that only rebuild the page's model) cannot be
+// driven from the engine alone, so they are not level-swept here; HostTest covers them through the page. In resident-page
+// projects the plugin drives *bound* parameters through the page as well, so those sweep points are flagged viaPage and the
+// host pumps the message loop before measuring.
+const cands = manifest.params.filter(p => p.source !== 'ui-state').slice(0, 8);
 for (const p of cands) { const e2 = fresh(); let v = p.default; if (p.type === 'float') v = p.max; else if (p.type === 'bool') v = p.default ? 0 : 1; else if (p.type === 'choice') { const other = p.choices.find(c => c.value !== p.default); v = other ? other.value : p.default; }
-  e2.hostParam(p.id, v); const yy = tail(run(e2, 1000, -20, 0.8), 16384); g.sweep.push({ id: p.id, value: v, outputDbfs: +rmsDb(yy).toFixed(3) }); }
+  e2.hostParam(p.id, v); const yy = tail(run(e2, 1000, -20, 0.8), 16384); g.sweep.push({ id: p.id, value: v, outputDbfs: +rmsDb(yy).toFixed(3), viaPage: !!(manifest.residentPage && manifest.bindings && manifest.bindings[p.id]) }); }
 fs.writeFileSync(out, JSON.stringify(g, null, 1)); console.log(JSON.stringify(g));

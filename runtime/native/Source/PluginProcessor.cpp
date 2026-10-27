@@ -100,9 +100,26 @@ H2PProcessor::H2PProcessor()
     dirty.reset (new std::atomic<bool>[n > 0 ? n : 1]); hostSetMs.reset (new std::atomic<juce::uint32>[n > 0 ? n : 1]);
     for (size_t i = 0; i < n; ++i) { params.push_back (apvts.getParameter (defs[i].id)); lastApplied[i] = 1e300; hostPush[i] = 0; dirty[i] = false; hostSetMs[i] = 0; }
     startTimerHz (30);
+    if ((bool) manifest.getProperty ("residentPage", false))
+    {
+        if (juce::MessageManager::getInstance()->isThisTheMessageThread()) createResidentPage();
+        else juce::MessageManager::callAsync ([this, token = alive] { if (token->load()) createResidentPage(); });
+    }
 }
 
-H2PProcessor::~H2PProcessor() { stopTimer(); }
+H2PProcessor::~H2PProcessor()
+{
+    alive->store (false);
+    stopTimer();
+    resident.reset();
+}
+
+void H2PProcessor::createResidentPage()
+{
+    if (resident != nullptr) return;
+    resident.reset (new H2PPage (*this));
+    log ("resident page created (model parameters are driven through the page's own UI code even while the editor is closed)");
+}
 
 double H2PProcessor::engineeringValue (int i) const
 {
@@ -210,7 +227,12 @@ void H2PProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     for (size_t i = 0; i < defs.size(); ++i)
     {
         const double v = engineeringValue ((int) i);
-        if (v != lastApplied[i].load()) { js->hostParam (defs[i].id.toStdString(), v); lastApplied[i] = v; hostPush[i] = v; dirty[i] = true; hostSetMs[i] = nowMs; }
+        if (v != lastApplied[i].load())
+        {   // resident page + bound control: the page's own code is the only path that yields the exact DSP state (model rebuilds);
+            // a value-swapped replay would be a transient approximation, so it is skipped. Unbound/plain parameters replay as before.
+            if (! (resident != nullptr && defs[i].bound)) js->hostParam (defs[i].id.toStdString(), v);
+            lastApplied[i] = v; hostPush[i] = v; dirty[i] = true; hostSetMs[i] = nowMs;
+        }
     }
 
     // 3. audio

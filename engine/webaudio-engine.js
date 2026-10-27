@@ -331,7 +331,7 @@
       if (options.parameterData) for (const k in options.parameterData) if (this.parameters.has(k)) this.parameters.get(k).value = options.parameterData[k];
       // instantiate processor with its port available in the base constructor
       AudioWorkletProcessor._pending = { procPort: procPort };
-      try { this.processor = new cls({ numberOfInputs: this.numberOfInputs, numberOfOutputs: this.numberOfOutputs, outputChannelCount: this.outputChannelCount, parameterData: options.parameterData, processorOptions: options.processorOptions || {} }); }
+      try { this.processor = new cls({ numberOfInputs: this.numberOfInputs, numberOfOutputs: this.numberOfOutputs, outputChannelCount: this.outputChannelCount, parameterData: options.parameterData, processorOptions: reviveMessage(options.processorOptions || {}) }); }
       finally { AudioWorkletProcessor._pending = null; }
       if (!this.processor.port) this.processor.port = procPort;
       this._inputs = []; for (let i = 0; i < this.numberOfInputs; i++) this._inputs.push([new Float32Array(Q), new Float32Array(Q)]);
@@ -442,7 +442,8 @@
           case 'prop': { const n = this._n(op.id); if (op.name === 'buffer' && op.value && op.value.channels) { const b = this.createBuffer(op.value.channels.length, op.value.length, op.value.sampleRate); op.value.channels.forEach((c, i) => b._d[i].set(c)); n.buffer = b; } else if (op.name === 'curve') n.curve = op.value; else n[op.name] = op.value; return; }
           case 'start': { const n = this._n(op.id); n.start(op.when == null ? undefined : this.currentTime + Math.max(0, op.when), op.offset, op.duration); return; }
           case 'stop': { const n = this._n(op.id); n.stop(op.when == null ? undefined : this.currentTime + Math.max(0, op.when)); return; }
-          case 'post': { const n = this._n(op.id); n.port.postMessage(op.data); this._notePost(op.id, op.data); return; }
+          case 'hostParam': { this.outbox.push({ id: -2, data: { type: '__hostParams', values: { [op.name]: op.value } } }); return; }   // page-side UI-state parameter moved (bridge)
+        case 'post': { const n = this._n(op.id); n.port.postMessage(reviveMessage(op.data)); this._notePost(op.id, op.data); return; }
           case 'reset': return this.resetGraph();
           case 'setSampleRate': return;
           case 'log': return;   // page console/error forwarding; consumed by the native editor
@@ -501,12 +502,12 @@
         if (t) {
           const copy = JSON.parse(JSON.stringify(t.msg)); let o = copy; for (let i = 0; i < t.path.length - 1; i++) o = o[t.path[i]];
           const leaf = t.path[t.path.length - 1]; o[leaf] = typeof o[leaf] === 'boolean' ? !!value : value;
-          n.port.postMessage(copy); this.lastPost[id] = copy; how = 'message'; continue;
+          n.port.postMessage(reviveMessage(copy)); this.lastPost[id] = copy; how = 'message'; continue;
         }
         const last = this.lastPost && this.lastPost[id];
         if (last) {
           const setIn = (o) => { for (const k in o) { if (k === name && (typeof o[k] === 'number' || typeof o[k] === 'boolean')) { o[k] = typeof o[k] === 'boolean' ? !!value : value; return true; } if (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k]) && setIn(o[k])) return true; } return false; };
-          const copy = JSON.parse(JSON.stringify(last)); if (setIn(copy)) { n.port.postMessage(copy); this.lastPost[id] = copy; how = 'message'; continue; }
+          const copy = JSON.parse(JSON.stringify(last)); if (setIn(copy)) { n.port.postMessage(reviveMessage(copy)); this.lastPost[id] = copy; how = 'message'; continue; }
         }
         // 2) else a real AudioParam (parameterDescriptors)
         const p = n.parameters.get(name); if (p) { p.value = value; how = how || 'audioparam'; }
@@ -516,9 +517,25 @@
     /* hook worklet -> page messages into outbox (called once per worklet node by the host) */
     captureMessages() { for (const n of this.nodes) if (n instanceof AudioWorkletNode && !n._captured) { n._captured = true; n.port.onmessage = ev => this.outbox.push({ id: this._idOf(n), data: ev.data }); } }
     _idOf(n) { if (this.alias) for (const k in this.alias) if (this.alias[k] === n) return k; return n.id; }
-    drainOutbox() { const o = this.outbox; this.outbox = []; return o; }
+    drainOutbox() { const o = this.outbox; this.outbox = []; for (const m of o) { try { m.data = serializeMessage(m.data); } catch (e) { m.data = { type: '__error', message: 'unserialisable worklet message: ' + e.message }; } } return o; }
     /* -------- string-based entry points for the native (JavaScriptCore) host -------- */
-    applyJSON(str) { let ops; try { ops = JSON.parse(str); } catch (e) { this._error('bad op JSON: ' + e.message); return; } if (!Array.isArray(ops)) ops = [ops]; for (const op of ops) this.applyOp(op); }
+    applyJSON(str) { let ops; try { ops = JSON.parse(str); } catch (e) { this._error('bad op JSON: ' + e.message); return; } if (!Array.isArray(ops)) ops = [ops]; for (const op of ops) this.applyOp(op); this._autoInput(); }
+    /* Pages that only wire the source after a user action (mic picker, file drop) boot as `worklet -> destination` with the
+       worklet's input unconnected. In a plugin the host track IS the source: feed it into every input-bearing node that is
+       reachable from the destination but has nothing connected, unless the page already routed ctx.input somewhere itself. */
+    _autoInput() {
+      for (const n of this.nodes) if (n && n._autoFed) { n.inputs[0] = n.inputs[0].filter(c => !c.auto); n._autoFed = false; }
+      const usesInput = this.nodes.some(n => n && n !== this.input && n.inputs && n.inputs.some(a => a.some(c => c.node === this.input)));
+      if (usesInput) return;
+      const seen = new Set(); const stack = [this.destination]; const heads = [];
+      while (stack.length) {
+        const n = stack.pop(); if (!n || seen.has(n)) continue; seen.add(n);
+        const slots = n.inputs || []; const connected = slots.some(a => a.length);
+        if (n !== this.destination && slots.length && !connected) heads.push(n);
+        for (const a of slots) for (const c of a) stack.push(c.node);
+      }
+      for (const h of heads) { h.inputs[0].push({ node: this.input, output: 0, auto: true }); h._autoFed = true; }
+    }
     /* analyser snapshots for the UI (float time + float freq dB), keyed by page id */
     analyserSnapshots() {
       const out = {}; if (!this.alias) return out;
@@ -528,6 +545,41 @@
     drainOutboxJSON(withAnalysers) { const msgs = this.drainOutbox(); const o = { time: this.currentTime, msgs }; if (withAnalysers) o.analysers = this.analyserSnapshots(); return JSON.stringify(o); }
   }
 
-  const api = { Context, AudioParam, AudioNode, AudioWorkletNode, AudioWorkletProcessor, registerProcessor, registry, AudioBuffer, Q };
+
+  /* -------- binary message codec (page <-> engine). Typed arrays, ArrayBuffers and WebAssembly.Module cross the JSON bridge as base64. -------- */
+  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const B64I = (() => { const t = new Int16Array(256).fill(-1); for (let i = 0; i < 64; i++) t[B64.charCodeAt(i)] = i; t[61] = 0; return t; })();
+  function b64enc(u8) { let s = ''; for (let i = 0; i < u8.length; i += 3) { const a = u8[i], b = i + 1 < u8.length ? u8[i + 1] : 0, c = i + 2 < u8.length ? u8[i + 2] : 0; s += B64[a >> 2] + B64[((a & 3) << 4) | (b >> 4)] + (i + 1 < u8.length ? B64[((b & 15) << 2) | (c >> 6)] : '=') + (i + 2 < u8.length ? B64[c & 63] : '='); } return s; }
+  function b64dec(str) { str = String(str).replace(/[^A-Za-z0-9+/=]/g, ''); let pad = 0; while (str.length && str[str.length - 1 - pad] === '=') pad++; const out = new Uint8Array(Math.floor(str.length * 3 / 4) - pad); let o = 0; for (let i = 0; i < str.length; i += 4) { const n = (B64I[str.charCodeAt(i)] << 18) | (B64I[str.charCodeAt(i + 1)] << 12) | (B64I[str.charCodeAt(i + 2)] << 6) | B64I[str.charCodeAt(i + 3)]; if (o < out.length) out[o++] = n >> 16 & 255; if (o < out.length) out[o++] = n >> 8 & 255; if (o < out.length) out[o++] = n & 255; } return out; }
+  const TA = { Int8Array, Uint8Array, Uint8ClampedArray, Int16Array, Uint16Array, Int32Array, Uint32Array, Float32Array, Float64Array };
+  if (typeof BigInt64Array !== 'undefined') { TA.BigInt64Array = BigInt64Array; TA.BigUint64Array = BigUint64Array; }
+  function taFromBytes(name, u8) { const C = TA[name] || Uint8Array; const bpe = C.BYTES_PER_ELEMENT; const n = Math.floor(u8.length / bpe); const buf = new ArrayBuffer(n * bpe); new Uint8Array(buf).set(u8.subarray(0, n * bpe)); return new C(buf); }
+  const wasmBytes = typeof WeakMap !== 'undefined' ? new WeakMap() : null;      // WebAssembly.Module -> bytes it was compiled from (for re-serialisation)
+  function reviveMessage(d) {
+    if (d === null || typeof d !== 'object') return d;
+    if (Array.isArray(d)) return d.map(reviveMessage);
+    if (typeof d.__ta === 'string') { if (typeof d.b64 === 'string') return taFromBytes(d.__ta, b64dec(d.b64)); if (Array.isArray(d.data)) return (TA[d.__ta] || Float32Array).from(d.data); }
+    if (typeof d.__ab === 'string') return b64dec(d.__ab).buffer;
+    if (typeof d.__wasm === 'string') { if (typeof WebAssembly === 'undefined') throw new Error('page sent a WebAssembly.Module but this engine host has no WebAssembly'); const bytes = b64dec(d.__wasm); const m = new WebAssembly.Module(bytes); if (wasmBytes) wasmBytes.set(m, bytes); return m; }
+    if (Array.isArray(d.__map)) return new Map(d.__map.map(([k, v]) => [reviveMessage(k), reviveMessage(v)]));
+    if (d.__audiobuffer) { const a = d.__audiobuffer; const ab = new AudioBuffer(a.channels.length, a.length, a.sampleRate); a.channels.forEach((c, i) => ab.getChannelData(i).set(reviveMessage(c))); return ab; }
+    if (d.__date) return new Date(d.__date);
+    const o = {}; for (const k in d) o[k] = reviveMessage(d[k]); return o;
+  }
+  function serializeMessage(d, depth) {
+    depth = depth || 0; if (depth > 64) return null;
+    if (d === null || typeof d !== 'object') return (typeof d === 'number' && !isFinite(d)) ? null : (typeof d === 'bigint' ? Number(d) : (typeof d === 'function' || typeof d === 'symbol' || typeof d === 'undefined' ? null : d));
+    if (ArrayBuffer.isView(d)) { if (d instanceof DataView) return { __ab: b64enc(new Uint8Array(d.buffer, d.byteOffset, d.byteLength)) }; return { __ta: d.constructor.name, b64: b64enc(new Uint8Array(d.buffer, d.byteOffset, d.byteLength)) }; }
+    if (d instanceof ArrayBuffer) return { __ab: b64enc(new Uint8Array(d)) };
+    if (typeof WebAssembly !== 'undefined' && d instanceof WebAssembly.Module) { const b = wasmBytes && wasmBytes.get(d); if (!b) throw new Error('WebAssembly.Module with unknown bytes cannot cross the bridge'); return { __wasm: b64enc(b) }; }
+    if (d instanceof Map) return { __map: Array.from(d.entries()).map(([k, v]) => [serializeMessage(k, depth + 1), serializeMessage(v, depth + 1)]) };
+    if (d instanceof Set) return Array.from(d).map(v => serializeMessage(v, depth + 1));
+    if (d instanceof Date) return { __date: d.getTime() };
+    if (d instanceof AudioBuffer) return { __audiobuffer: { sampleRate: d.sampleRate, length: d.length, channels: d._d.map(c => ({ __ta: 'Float32Array', b64: b64enc(new Uint8Array(c.buffer, c.byteOffset, c.byteLength)) })) } };
+    if (Array.isArray(d)) return d.map(v => serializeMessage(v, depth + 1));
+    const o = {}; for (const k in d) { const v = serializeMessage(d[k], depth + 1); if (v !== undefined) o[k] = v; } return o;
+  }
+
+  const api = { Context, AudioParam, AudioNode, AudioWorkletNode, AudioWorkletProcessor, registerProcessor, registry, AudioBuffer, Q, serializeMessage, reviveMessage, b64enc, b64dec };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; root.WebAudioEngine = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

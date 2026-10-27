@@ -13,8 +13,9 @@
 // The engine is linked into this plugin binary. Two things follow:
 //  * the image must never be unloaded (JSC keeps compiler/GC threads alive), so pin it the first time we run;
 //  * JSC asserts if it cannot get MAP_JIT memory. Probe first; without it run the interpreter instead of crashing the host.
-static bool setJit = false, setWasm = false;
-static void forgetStaticJSCEnv() { if (setJit) unsetenv ("JSC_useJIT"); if (setWasm) unsetenv ("JSC_useWasm"); setJit = setWasm = false; }
+static bool setJit = false; static std::vector<std::string> setVars;
+static void setIfUnset (const char* k, const char* v) { if (getenv (k) == nullptr) { setenv (k, v, 1); setVars.emplace_back (k); } }
+static void forgetStaticJSCEnv() { if (setJit) unsetenv ("JSC_useJIT"); for (auto& k : setVars) unsetenv (k.c_str()); setJit = false; setVars.clear(); }
 static const char* prepareStaticJSC()
 {
     static const char* verdict = nullptr;
@@ -29,7 +30,11 @@ static const char* prepareStaticJSC()
     // JSC_* variables are read once, by the bundled engine's first VM init (inside JSGlobalContextCreate below); they are
     // removed again right after so the host's own copy of Apple's JavaScriptCore never sees them.
     if (! jitMem && getenv ("JSC_useJIT") == nullptr) { setenv ("JSC_useJIT", "false", 1); setJit = true; }
-    if (getenv ("JSC_useWasm") == nullptr) { setenv ("JSC_useWasm", "false", 1); setWasm = true; }   // no Wasm fast-memory signal handlers inside somebody else's process
+    // WebAssembly stays ON (pages ship wasm DSP engines), but in somebody else's process we must not install signal handlers:
+    // bounds-checked (non-fast) memories, no SIGBUS/SIGSEGV fault handler, polling VM traps. Without JIT, wasm runs on IPInt.
+    setIfUnset ("JSC_useWasmFastMemory", "false");
+    setIfUnset ("JSC_useWasmFaultSignalHandler", "false");
+    setIfUnset ("JSC_usePollingTraps", "true");
     verdict = jitMem ? "bundled JavaScriptCore (static), MAP_JIT memory available in this host"
                      : "bundled JavaScriptCore (static), host forbids MAP_JIT memory -> interpreter";
     return verdict;

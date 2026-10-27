@@ -47,13 +47,14 @@ jobs:
           echo "slugs=$SLUGS" >> $GITHUB_OUTPUT; echo "building: $SLUGS"
       - name: Forge every inbox page
         run: |
-          mkdir -p plugins
+          mkdir -p plugins forgelogs
+          # every page is probed control-by-control from a fresh boot (minutes per page): forge them in parallel, then print each log
           for f in $(echo '${{ steps.list.outputs.slugs }}' | jq -r '.[]'); do
-            echo "::group::forge $f"
-            node forge/index.js "inbox/$f.html" --out "plugins/$f" --slug "$f" --vendor "${{ github.repository_owner }}"
-            node tests/golden.js "plugins/$f"
-            echo "::endgroup::"
+            ( node forge/index.js "inbox/$f.html" --out "plugins/$f" --slug "$f" --vendor "${{ github.repository_owner }}" && node tests/golden.js "plugins/$f" ) > "forgelogs/$f.log" 2>&1 &
           done
+          FAIL=0; for job in $(jobs -p); do wait "$job" || FAIL=1; done
+          for f in $(echo '${{ steps.list.outputs.slugs }}' | jq -r '.[]'); do echo "::group::forge $f"; grep -v '^\[h2p\]' "forgelogs/$f.log" || true; echo "::endgroup::"; done
+          exit $FAIL
       - uses: actions/upload-artifact@v4
         with:
           name: forged-projects

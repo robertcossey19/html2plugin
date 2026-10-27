@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no" />
+<title>AnalogExact 1073 - Hardware Edition v4.1 (nodal circuit model)</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{font-family:'Inter',sans-serif;background:#111827;color:#d1d5db}
+.plugin-container{position:relative;background:#1a1a1a;border:2px solid #5a5a5a;border-top-color:#7a7a7a;border-left-color:#7a7a7a;box-shadow:0 20px 40px rgba(0,0,0,.6), inset 0 0 15px rgba(0,0,0,.5);overflow:hidden;display:grid;grid-template-areas:"content"}
+.pcb-background-svg{grid-area:content;width:100%;height:100%;pointer-events:none;z-index:1}
+#pcb-svg{width:100%;height:100%;object-fit:cover}
+.signal-flow-path{stroke-width:1.8;fill:none;stroke-dasharray:20 150;stroke-dashoffset:0;animation:trace 4s linear infinite;transition:filter .2s,opacity .2s,stroke .2s}
+.path-mic{stroke:#ffab00}
+.path-line{stroke:#37d7ff}
+@keyframes trace{to{stroke-dashoffset:-170}}
+.ui-grid{grid-area:content;position:relative;z-index:2;display:flex;flex-direction:column;min-height:600px}
+.header{font-family:'Orbitron',sans-serif;color:#fde047;text-shadow:0 0 10px #fde047,0 0 20px #f59e0b;background:linear-gradient(to bottom,rgba(10,10,10,.8),transparent)}
+.footer{background:linear-gradient(to top,rgba(10,10,10,.8),transparent)}
+.knob-container{position:relative;width:110px;height:110px;touch-action:none}
+.knob{position:absolute;inset:0;border-radius:50%;background:linear-gradient(145deg,#3a3a3a,#1a1a1a);box-shadow:0 6px 12px rgba(0,0,0,.7), inset 0 2px 3px rgba(255,255,255,.1), inset 0 -2px 3px rgba(0,0,0,.5);cursor:ns-resize}
+.knob-indicator{position:absolute;width:4px;height:15px;background:#fde047;border-radius:2px;left:calc(50% - 2px);top:10px;transform-origin:50% 45px;box-shadow:0 0 8px #fde047;transform:rotate(-135deg)}
+.knob-label{font-family:'Orbitron',sans-serif;font-size:.8rem;text-transform:uppercase;color:#d4d4d8;text-shadow:1px 1px 2px #000}
+.knob-value{font-family:'Orbitron',sans-serif;font-size:.9rem;color:#eab308;background:rgba(10,10,10,.7);padding:4px 8px;border-radius:4px;border:1px solid #444;box-shadow:inset 0 0 5px rgba(0,0,0,.5)}
+.toggle-switch{width:50px;height:26px;background:#374151;border-radius:13px;cursor:pointer;position:relative;transition:background-color .3s}
+.toggle-switch.active{background:#4f46e5}
+.toggle-switch::after{content:'';position:absolute;width:20px;height:20px;background:#d1d5db;border-radius:50%;top:3px;left:3px;transition:transform .3s}
+.toggle-switch.active::after{transform:translateX(24px)}
+.meter{background:rgba(10,10,10,.7);border-radius:4px;overflow:hidden;border:1px solid #444;box-shadow:inset 0 0 8px rgba(0,0,0,.6)}
+.meter-rms{background:linear-gradient(to top,#ca8a04,#facc15);transition:height .05s linear;position:absolute;bottom:0;left:0;right:0;height:0%}
+.meter-peak{background:#fde047;opacity:.6;transition:height .05s linear;position:absolute;bottom:0;left:0;right:0;height:0%}
+.clip-ind{position:absolute;top:0;left:0;width:100%;height:4px;background:transparent;transition:background-color .1s}
+.clip-ind.clipped{background:#dc2626;box-shadow:0 0 5px #dc2626}
+.btn{font-family:'Orbitron',sans-serif;background:rgba(51,51,51,.8);border:1px solid #555;transition:all .2s}
+.btn:hover{background:rgba(68,68,68,.9);border-color:#777;box-shadow:0 0 10px rgba(253,224,71,.5);color:#fde047}
+.is-disabled{opacity:.45;filter:grayscale(1);pointer-events:none}
+.pill{display:inline-flex;align-items:center;gap:.5rem;border:1px solid #555;border-radius:999px;padding:.25rem .5rem;background:rgba(51,51,51,.6)}
+.pill button{padding:.2rem .6rem;border-radius:999px;border:1px solid #555}
+.pill .active{background:#4b5563;color:#fde047;border-color:#777}
+.note{font-size:10px;color:#94a3b8}
+.group-title{font-family:'Orbitron',sans-serif;font-size:.7rem;letter-spacing:.12em;color:#94a3b8;margin-bottom:.25rem;text-align:center}
+.ring-on{box-shadow:0 0 0 2px rgba(250,204,21,.6)}
+.mini{font-size:.7rem;padding:.25rem .5rem;border-radius:.375rem}
+#drive-value,#char-value,#gain-value{font-size:.66rem;letter-spacing:.02em;white-space:nowrap}
+</style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+<div class="w-full max-w-5xl mx-auto my-8">
+<div class="plugin-container rounded-lg">
+<!-- Animated PCB -->
+<div class="pcb-background-svg">
+<svg id="pcb-svg" viewBox="0 0 900 480" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+<defs><radialGradient id="pad"><stop offset="0%" stop-color="#d4af37"/><stop offset="100%" stop-color="#a08020"/></radialGradient></defs>
+<rect width="900" height="480" fill="#0c3b2e"/>
+<text fill="#ccc" font-family="monospace" font-size="9" style="opacity:.5;">
+<tspan x="10" y="20">ANALOG_EXACT_1073_V4.1 :: NODAL CIRCUIT MODEL</tspan>
+<tspan x="188" y="75">BA283 GAIN STAGE</tspan>
+</text>
+<circle cx="110" cy="175" r="45" fill="#e6d5b8" stroke="#333" stroke-width="1"/><text x="110" y="180" font-family="Orbitron" font-size="14" fill="#333" text-anchor="middle">10468</text>
+<circle cx="110" cy="285" r="45" fill="#e6d5b8" stroke="#333" stroke-width="1"/><text x="110" y="290" font-family="Orbitron" font-size="14" fill="#333" text-anchor="middle">31267</text>
+<circle cx="770" cy="175" r="45" fill="#e6d5b8" stroke="#333" stroke-width="1"/><text x="770" y="180" font-family="Orbitron" font-size="14" fill="#333" text-anchor="middle">LO1166</text>
+<path id="mic-path"  class="signal-flow-path path-mic"  d="M155,175 H 260 C 320,175 340,235 400,235 H 520 C 590,235 610,175 690,175 H 730"/>
+<path id="line-path" class="signal-flow-path path-line" d="M155,285 H 260 C 320,285 340,235 400,235 H 520 C 590,235 610,285 690,285 H 770 C 810,285 830,175 800,175"/>
+<circle cx="155" cy="175" r="4" fill="url(#pad)"/><circle cx="155" cy="285" r="4" fill="url(#pad)"/><circle cx="730" cy="175" r="4" fill="url(#pad)"/><circle cx="800" cy="175" r="4" fill="url(#pad)"/>
+</svg>
+</div>
+<!-- UI -->
+<div class="ui-grid">
+<div class="header p-2 text-center">
+<h1 class="text-2xl font-bold tracking-widest">ANALOG EXACT</h1>
+<p class="text-xs text-gray-400 tracking-wider">1073 CIRCUIT MODEL · BA284 + BA283 + LO1166</p>
+</div>
+<div class="flex flex-col lg:flex-row items-center justify-around gap-6 p-4">
+<!-- Left column -->
+<div class="flex flex-col items-center gap-4">
+<div class="text-center">
+<div class="knob-label mb-2">INPUT</div>
+<select id="mode" class="bg-gray-800 text-yellow-400 text-sm rounded p-2 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500">
+<option value="mic">CLASSIC MIC (10468)</option>
+<option value="line">CLASSIC LINE (31267)</option>
+</select>
+</div>
+<div class="text-center">
+<div class="knob-label mb-1">STYLE</div>
+<div class="pill">
+<button id="style-classic" type="button" class="btn active">CLASSIC</button>
+<button id="style-modern" type="button" class="btn">MODERN</button>
+</div>
+<div class="note mt-1">Classic: the unit as built, Gain = the 5 dB switch · Modern: the same switch taken apart — Character = its EQ curve, Drive = its saturation, Gain = clean level</div>
+</div>
+<div class="text-center">
+<div class="knob-label mb-2">PHASE</div>
+<div id="phase-btn" class="toggle-switch" title="Phase invert"></div>
+</div>
+<div class="text-center">
+<div class="knob-label mb-1">MASTERING MODE</div>
+<button id="mastering-btn" type="button" class="px-3 py-1 rounded border border-slate-600 bg-slate-800 hover:bg-slate-700 text-yellow-400 text-xs btn">OFF</button>
+<div class="note mt-1">For a finished track: 0 dBFS = +24 dBu at the output transformer, unity at 1 kHz, the track’s own level drives the circuit · Classic: gain switch selects the circuit · Modern: same split, Gain ±24 dB clean</div>
+</div>
+<div class="text-center">
+<div class="knob-label mb-1">CHANNEL MODE</div>
+<div class="pill">
+<button id="mono-btn" type="button" class="btn">MONO</button>
+<button id="stereo-btn" type="button" class="btn active">STEREO</button>
+</div>
+<div class="note mt-1">Mono: L+R summed into one channel chain · Stereo: two independent chains</div>
+</div>
+<div class="text-center">
+<div class="knob-label mb-1">TRANSFORMER CROSSTALK</div>
+<button id="xtalk-btn" type="button" class="px-3 py-1 rounded border border-slate-600 bg-slate-800 hover:bg-slate-700 text-yellow-400 text-xs btn">OFF</button>
+<div class="note mt-1">−60 dB, HPF 2.5 kHz, 0.18 / 0.27 ms (synthetic, not measured)</div>
+</div>
+<div class="text-center">
+<div class="knob-label mb-1">OVERSAMPLING</div>
+<button id="hq-btn" type="button" class="px-3 py-1 rounded border border-slate-600 bg-slate-800 hover:bg-slate-700 text-yellow-400 text-xs btn ring-on">2x HQ</button>
+<div class="note mt-1">2x: circuits solved at twice the host rate (export always 2x) · 1x ECO: monitoring fallback, HF above ~15 kHz rolls off early (trapezoidal warp)</div>
+</div>
+</div>
+<!-- Middle knobs -->
+<div class="flex items-center justify-center gap-6">
+<div id="gain-set" class="flex flex-col items-center gap-2">
+<div class="knob-label">GAIN</div>
+<div class="knob-container" id="gain-knob-container"><div class="knob"><div class="knob-indicator" id="gain-indicator"></div></div></div>
+<div class="knob-value" id="gain-value">— dB</div>
+</div>
+<div id="trim-set" class="flex flex-col items-center gap-2">
+<div class="knob-label">TRIM</div>
+<div class="knob-container" id="trim-knob-container"><div class="knob"><div class="knob-indicator" id="trim-indicator"></div></div></div>
+<div class="knob-value" id="trim-value">— dB</div>
+<button id="trim-zero" type="button" class="btn mini">Zero Out</button>
+</div>
+<div id="modern-drive-set" class="flex flex-col items-center gap-2 hidden">
+<div class="group-title">MODERN</div>
+<div class="knob-label">DRIVE</div>
+<div class="knob-container" id="drive-knob-container"><div class="knob"><div class="knob-indicator" id="drive-indicator"></div></div></div>
+<div class="knob-value" id="drive-value">SAT MIC -50 · A2</div>
+</div>
+<div id="modern-char-set" class="flex flex-col items-center gap-2 hidden">
+<div class="group-title">MODERN</div>
+<div class="knob-label">CHARACTER</div>
+<div class="knob-container" id="char-knob-container"><div class="knob"><div class="knob-indicator" id="char-indicator"></div></div></div>
+<div class="knob-value" id="char-value">EQ MIC -50 · A2</div>
+</div>
+</div>
+<!-- Right meters -->
+<div class="flex items-center justify-center gap-3 h-48">
+<div class="flex flex-col items-center gap-2 h-48">
+<div class="meter w-10 h-full relative">
+<div class="clip-ind" id="clip-l"></div>
+<div class="meter-peak" id="peak-l"></div>
+<div class="meter-rms" id="rms-l"></div>
+</div><div class="knob-label">L</div>
+</div>
+<div class="flex flex-col items-center gap-2 h-48">
+<div class="meter w-10 h-full relative">
+<div class="clip-ind" id="clip-r"></div>
+<div class="meter-peak" id="peak-r"></div>
+<div class="meter-rms" id="rms-r"></div>
+</div><div class="knob-label">R</div>
+</div>
+</div>
+</div>
+<div class="footer p-2 flex flex-col items-center gap-2">
+<div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+<button id="mic-btn" type="button" class="w-full sm:w-auto text-xs font-semibold py-2 px-4 rounded-md btn">MIC INPUT</button>
+<label class="btn w-full sm:w-auto text-xs font-semibold py-2 px-4 rounded-md cursor-pointer text-center">LOAD FILE
+<input type="file" id="file-input" accept="audio/*" class="hidden">
+</label>
+<button id="download-btn" type="button" class="w-full sm:w-auto text-xs font-semibold py-2 px-4 rounded-md btn">PROCESS & SAVE</button>
+</div>
+<div id="info-text" class="text-center text-xs text-gray-500 pt-2">SELECT AUDIO SOURCE</div>
+<div id="dsp-stat" class="note text-center">engine idle</div>
+<details id="review" class="w-full max-w-3xl mt-1">
+<summary class="note text-center cursor-pointer select-none" style="color:#facc15;letter-spacing:.08em">MODEL REVIEW — SIGNAL PATH · CONTROLS · MEASUREMENTS · ESTIMATES</summary>
+<div class="note text-left mt-2 space-y-2" style="line-height:1.45">
+<p><b style="color:#e2e8f0">SIGNAL PATH (both styles, both modes).</b> Nodal (DK-method) simulation solved per sample with Newton iteration in WebAssembly, 2x oversampled. Mic: 10468 input transformer (1200 ohm strap, 1+1:2+2 = 1:2 as in the Carnhill VTB9045 data; leakage inductance, winding capacitance, core saturation and hysteresis) → BA284 (A1, 3 BC184C stages, only at −80…−55) → BA283 (A2, 3 BC184C stages) → BA283 output amp (BC184C + 2N3055 class-A emitter follower, 18.5 dB feedback) → LO1166 output transformer into 600 ohm. Line: 31267 input transformer with the 1039 ohm tap chain, then A2 and the output stage. Gain is set exactly the way the unit does it: the EK20033 switch ladders (Rt / Rsu / series / shunt / pad) change the feedback and interstage networks of the real stages. There are no waveshapers, no static curves, no "transformer" high-pass + tanh anywhere. Saturation is where it is in the hardware: output transformer core first at low frequencies, then the output stage clips, then A2, then A1 when it is in the path.</p>
+<p><b style="color:#e2e8f0">GAIN (Classic).</b> The 5 dB switch. Mic −80…−20 (13 positions), line +10…−20 (7 positions). Modelled gain at 1 kHz is within about 1 dB of the nominal step over the whole range (measured in the model: −80 → 80.6 dB, −20 → 20.7 dB).</p>
+<p><b style="color:#e2e8f0">MODERN — the Classic gain switch taken apart into its three physical effects.</b> On the unit, turning the gain switch does three things at once: it changes the circuit (so the frequency/phase response changes), it changes how hard the stages and transformers are driven (saturation), and it changes the level. Modern runs the same simulations and separates them. <b>CHARACTER</b> = the frequency/phase response of switch position C: the exact circuit for that position, linearised about its operating point, scaled to the Drive position's gain. No distortion in this path. <b>DRIVE</b> = the saturation of switch position D: the full nonlinear circuit for D is run at the real signal level, and the same circuit linearised is run on the same signal; the difference between the two is exactly what D's nonlinearity adds (harmonics, intermodulation, compression) and nothing else. Output = Character path + that difference. With Character and Drive on the same position this is sample-identical to Classic (verified bit-for-bit). <b>GAIN</b> = clean level after the circuits, it can never add or remove distortion: preamp mode is calibrated as total gain like the unit (20…80 dB mic, −6…+24 dB line), Mastering mode is −24…+24 dB. Both Drive and Character are stepped like the switch they come from (13 mic / 7 line positions).</p>
+<p><b style="color:#e2e8f0">MASTERING MODE.</b> For a finished track rather than a mic or line source, so the mic/line calibration does not apply. The track is taken at its true level: 0 dBFS at the input = +24 dBu at the output transformer of the selected circuit (the unit's nominal maximum line level), unity gain at 1 kHz. The track's own level is what drives the stages and transformers — a −1 dBFS master sits about 2 dB under the output stage's ceiling and well into the LO1166's low-frequency saturation, a −12 dBFS mix barely touches either. Classic: the gain switch selects the full nonlinear circuit for that position (its frequency/phase response and its saturation structure); it does not change loudness. Modern: the same split as preamp mode — Drive = saturation of position D, Character = EQ of position C, Gain = ±24 dB clean. With Character = Drive = the Classic position and Gain at 0 dB, Modern Mastering is sample-identical to Classic Mastering. Note what the physics says here: at the same output level the difference between two gain positions of a 1073 is small (sub-dB response differences, THD in the hundredths of a percent up to a few percent at 20 Hz for the A1+A2 positions). That is the unit, not a limitation of the model.</p>
+<p><b style="color:#e2e8f0">MEASURED IN THE MODEL (offline render, 48 kHz, 2x).</b> Classic, mic −50, +20 dBu out, 1 kHz: THD 0.0005 %. Mic −80, +20 dBu out, 20 Hz: 0.53 %. Line 0, +20 dBu out: 0.05–0.06 %. Output stage alone −0.59 dB @20 kHz, −2.57 dB @40 kHz. Mastering (both styles, track at −1 dBFS): unity 0.00 dB @1 kHz at every position; 1 kHz THD 0.006 % (−50/−80) to 0.008 % (−20); 20 Hz THD 3.8–4.2 % (LO1166 core at +23 dBu — the published THD spec stops at 50 Hz, where the model reads 0.05 %); 20 kHz −0.57 dB (−50), −0.62 dB (−80), −0.76 dB (−20). Classic Mastering vs Modern Mastering with Character = Drive = the same position and Gain 0 dB: sample-identical (max difference 0). True stereo: a left-only input leaves the right output at −172 dBFS, and the left output is bit-identical whether the right channel is silent or carrying signal; mono mode sums L+R into one chain. Hardware spec sheet: THD &lt;0.07 % @+20 dBu, ±0.5 dB 20 Hz–20 kHz, −3 dB @40 kHz, &gt;+26 dBu into 600 ohm. Modern separation checks: Character −80 with Drive −20 follows the −80 response (20 Hz −0.123 dB, 20 kHz −0.620 dB, same as Classic −80 linearised: −0.123 / −0.620); Character −20 with Drive −80 follows the −20 response (20 kHz −0.758 vs −0.758). Drive −20 with Character −80 at +20 dBu: THD 0.0043 %, 2nd harmonic −87.68 dB vs Classic −20: 0.0043 %, −87.68 dB. Drive −80 with Character −20 at +20 dBu: 1 kHz 0.0033 % vs 0.0033 % Classic; 20 Hz 0.51 % vs 0.53 % (the 0.3 dB difference in fundamental level between the two positions' LF response). Character ≠ Drive at small signal adds 0.0001 % THD. Gain +12 dB clean: THD unchanged (0.00053 %). Modern Mastering: 0.00 dB @1 kHz, −1 dBFS peaks into Drive −20: 0.008 %, into Drive −80 at 20 Hz: 3.6 %. Mono mode (L+R summed into one chain) and Stereo (two chains) verified in both styles. CPU: a 3-stage Drive position (−80…−55) with a different Character in stereo at 2x can exceed one core; the engine then drops to 1x ECO for monitoring (export always renders 2x). At 1x ECO the trapezoidal warp pulls 20 kHz down about 5 dB at 48 kHz.</p>
+<p><b style="color:#e2e8f0">ESTIMATES (not measured against a unit).</b> 31267 line transformer leakage inductance / winding capacitance (tuned to hit the published ±0.5 dB / −3 dB @40 kHz response), LO1166 leakage, 10468 primary inductance (1.22 H from the Carnhill design guide), output stage feedback 18.5 dB vs the 15 dB often quoted, transformer crosstalk (synthetic −60 dB HF-weighted path, no coupling measurement exists for it), SPICE device parameters for BC184C / 2N3055 from datasheets. Nothing in this model has been compared against a physical 1073 — the numbers above are the model vs the published spec, not model vs hardware.</p>
+<p><b style="color:#e2e8f0">KEPT FEATURES.</b> Style, Mastering Mode, Channel Mode, Transformer Crosstalk, Oversampling, Trim (±24 dB clean), Phase, Drive (saturation of a switch position), Character (EQ of a switch position), Mic input (forced mono), file playback, Process &amp; Save (48 kHz / 24-bit WAV, 2x, junction capacitances on).</p>
+</div>
+</details>
+<div id="audio-player-container" class="hidden p-2 w-full max-w-md"><audio id="audio-player" controls class="w-full"></audio></div>
+</div>
+</div>
+</div>
+</div>
+<script>
+/* AnalogExact 1073 v4 — nodal circuit simulation of the 1073 chain (10468/31267 input transformer, BA284 + BA283 gain
+   stages with the EK20033 gain-switch ladders, BA283 output amp, LO1166 output transformer) solved per sample in
+   WebAssembly inside an AudioWorklet. No waveshapers. The engine (wasm) and the JS (engine netlists + worklet processor
+   + UI) are gzip-packed below and inflated by the browser's DecompressionStream at load. */
+const ENGINE_WASM_B64=
+"H4sIAAAAAAACA707a4wkxXlV1Y+Zfk33zM7Ozd0ed18VRFpndQgstIZA2OnzHByGOLb8CLGwbpfdubtt5naX3Tm8hBWzEM45R5icEJE5ROzZWVCcKE4wdmQUER84SsiPRHKsRHZ+JCIvK4oVg8jDxOJI+Kqqe3r29vYOKTArbXV1V32v+l71VTeZWTlBCSH0sD9NyDSh"+
+"3Wmriz/anWbyv9Fd65JpukbXpo1ut0umTf2Yquu1NX2LTLPuGl0zdtUIZcQwLbtgFIvFolWkReq4nmnRJUqpZVDyYduhXRqf6X2BeYW/p2X7ROvE4vL9jLjHWzNLR5ZbK60OIY7snFxpzRFanJ1fnj2y0PocYSV5KcccmWm3ieHKG0fnW+05YqqBON9S9+c7reUV4kSy"+
+"M9tuzSzrW25xabk1J4d6jprVaS0RP1hcwZtHjs63O61lEmJfXR9Z6iyTqLi4oiks2/OL8l7FmT0+M79wZPboMTISqOul5cXZ1soKqbp/M1MLSExiMsnOnF5fJ55HYjKur18eo243JtyKu9xmDXzwBD4QhXj/RwIChfirtC3s+EW8mSAMAnb8Tdk7SD4ke8/JHpjq2e+p"+
+"nqF6X1U9pnrPqB5VvZ7siSIgVIVbEiVsoEDawkmEG6+vw+1IPriafLBjoxP3nse53GINcA4FBCxuGw2wD5IPGTiimHAbnLibCCcgngcutz0ogjXJrokJd1mDNcAGglisRHiI5RcQC/d96sUEvO2Q+awBFiLzuQ0Wd3ZC6CmE/iS7TqIygSXCAyq58gdc+dshclOu3J25"+
+"8hUSd5Jdn3KlOWMxTQRLRHABZ8G2nAE7FFDJF9uJLwgytm5CLBkrdCdWmGZlZ9iSHUWjnULSmII8QM1xA1lK1xG5dYa4dXfg9nLFG2TibWo0RhsxuRqTWsHgYqripqri7sz2QKaHh3hinZgub2GrdHG2RGknblIspUl2h9KQRDgDJpyLMcE0ExdAZgiZSQacjIGPxYQz"+
+"zQDVyqEIdxTh2+qIwxpAEY+zDR6KeGhe3Z1J9slM0Uki6IANuh14BgSVm3EbyI7KTRV8NsnujAmnCjobKDjbDjplDYRPcPbO8D0k4QIFR2xA8wCRBjrJ7kIaciZNYtoR/pA2sB2UPMe1r6g675Mtv/OeJDNSZD44rClskk2/byKYHrLxVARzqQjABuvyOU/dNLu0mx7w"+
+"ejxVJzZQp/8PbjUr7RwrpnZX5gX8mBfjx9H87ITMzHhZkmg8jeZyGHI0Q5fHTCfHjPFeM7P63i7MWo4XEttt7XPZgB1TsbMdTmHu6HM1lncSo3Wa91iX5ETZ7iX5yLHxCH3/XJZEB2wbgz1Nc9L035VSkNRi3523ymvKo1TidS8d2WganrdTeRe5d/ORDcMKcubk3bFO"+
+"ThV3VHHnXnI12cUDaZqk0kn2BM1hUCvpXixyEh05dwYuoW+3kk9QcPMQdYR9kuZCuTW0ku4OK+mmvne71MpCYqz8ormT7Gm6jVB3yPiHorl1cRypNNkk6yEvVqqTlzI+CxGwdEOxsxr6qIa+5EhuLp6hGKYPB7gQVNHlqIYieRQcbBwgSCUJiG94Q2qjyR1aESuDjUML"+
+"MU0m1RYNCsih7dXzmzt1KZ97pxilXSC4g9N7LU7SVb38P6Al3FHLDXXRcT0/KIVRuTJSHa15QMbZNaFsrlPN9aq5STUN1TRVc1g1d6jmY6q5UzV3qWZaNUuqWVXNOlXtI7o9rdtHdXtGt59UzRO6+yTlzAPm/Z1pWF26xrQoBIn/XG9DbzAIEL2ZlVtUNKd0W2qMMyJM"+
+"XE0CxjhrStlZMeE2mLxgoGTIhEHeYur5HWAlzeKXvjFrv/D4FN44DHYyYZDN6PPr6+uk+Uj4M595Y/Wpqf4NBvHAigE1zY7rqEYEtQLXtpuIgvTr0jc1lcK9OtXnRUUCiwknRrowDHcknUQSUTIIo8zDYc9QgSDNjrAS7D9KRQEsHIb8ookUMcRBAZz8zSjZ5mY9QSC5"+
+"6bjV4sSnEtMZVPd6G59xqlBLxImw4mKiFN9CN6OYlts0AuZhZNGMjQ5nOOk4d9G3xgSlCoaG40a/hnLD3pywlfCNBhAtlNfPNVODRPJuGVPESTmaYCEm61bpBuTm2xhn7eg0AtyD109TcHAk3uYWqChOwNJMIvXoB4DhIBuXxUZY2nrRBkUBTITveY8xg67RB2lXEfTq"+
+"qZdUgM3oawUEyB8LdvB/1a/wqwfX1e/NqUfOCTJYZixINP/yxu7RL/f+e2pOGGNiwG5vwPpUb1NQoH1Bmvvk79tT/WZZ/l6e6gHpN6s3fn3kxq//iercsuuznb869Irq7H3l3r2v3PsXqvP4Vbc9ftVt31Odp87i729V51Py9y+qo/lo9ID244dX44dWwRgDdvC607+d"+
+"fKv52g0/ffvg1T+c6vcwDaDeGWYWunSNosk10A6JMJQVoZfgpswYUbqo0LZe9QIYbV5U2g0mECgmsdERUhcH5ZpM2zFVACeBVN28OMIHYMolUtOE3wcPb7r9Hi6qnOCDF9fxaR+8uJjkHg8UOw9ZDchrryG1l6HStZEeQaQbGKwTAtMaYigNecOyvC5bM6RUrsSFJ/E6"+
+"vYebMZVhiSnxYEIlZBgrAAE7kfJwgHAXCMdMzFeWDwQcYBI5ODgnSEQJGQ7Piqj5xX//w95P/uy5m2cxK0CecOcNDi9DkVfkHTEisY4A+2iA4ragDJUJg5wVVYjmxOgYL0MVIhgd4xFUkJAKsJxJeawBUfOX/+PN7+xfeJYexUga4r0yOLdg5Acbym2c5HELfD6KKHAZ"+
+"I7AkHhRQBSLZILeV1N5G0dBG5U4cgkRU1KQKUChLSWfmqSYjzzz0YASTFhOCJLMPCDdF9QYD3bkjuZQAeQmKfBQcPiKNfSSVYSBXudrnEa5HXOQVowGjUElEGcr4yIOKHBL1N3JE+3kvQ2FEkliRHErS0uGjKMFRGJGSB3arSsYQhgseFBLugR93sQZXxF4RSZYwpT5U"+
+"4tUVXgIDKjgQtVhRzf2Y8BFgUrxUiS6QCpQosfl6AUZ4mSE7erEjuRaSyv4GSndoBcoIpiwpNMBOwFQxDCI0AfChhGR68WrCPZSVZIqPwGhMb+cVCPgoVORky9tDdOKxN64DHUt0VB1nxKumj15Iq8gG8WQ+RibZusxcNkVhpMseUF7E6hbWstD99Bc0GEyr40eyHsbC"+
+"t1IU3AASv5n1TCDxX2c9C0j83ayHXuU/s14BiK5mY68IRFezsYdZ2zNZzx0kCh72fZk6fDV9LgJl0944+xhGdl6CgIdGA0rSW+SCVQmbEoQo+VBbl6MmF2RRBAd542yVl8CRIJR67QQCHFT3wW7FV/Awq+QROPFbGIXu5eWYSJdgHkaTwOrihdmuqPJRdBYBiQ0egq2Y"+
+"2X4csneeGBEQ/H/+DQqj51+nfFTeJfIuwbtVvFt9R4CgqAdFvZmIEBzpXsu85EH1PCe8xlBmDtpwCclH31e6h5dkzCBSOW3V9qHW47WBTLqJKElhUKhIOx89zwkCpT28pD2o9VSaI1P5CtpnBXw0PdZAiVcPqQVsoiWNsx5u4DzMTaTgsjSMNaAiQ5MoZamYQQ0PbCgl"+
+"OOE0FRHIZ1DW8SrUscfDpFaM6NiCMHbJ0FXrQ4jPR9Q8Ue/3pC+JQD6HGoRpGKtDqIJfv7fBa+jrPcyY31Hka9opjjRPwzARbUj16eP/Yo/XvDSwQi0f5ny5Dj6KfBf4qcbslhrjx+ZtfI/0OyhZESV8ZEft2aO1x8Js6r3UHkX1btSeEXSD9YES+VC6Y6BEfqpEWnnA"+
+"uoQSMYgSqTxQl+pDhpXIgl3oP/NKpIRnDYRHcSmeprwSS/+MQrxcs6twrI2854KjQ2Z3EYkxLbHKJSRmQrST2VXAwsATocQiLTHvgj1OtsvZalwGGldmTir3K6W2Y6vLHqR2ZuYsLLOoG7QhKesZTKpnxiUZU0mhOWzBQzPQiIyLGZFvepKxNt+NzTQfw3NOGeawjuHh"+
+"fhX3LLwEvnLvSnGVlxc1melArflA9fdv/YdfeeJcejEFNahviDrUsztzY/nuudkxyaKODnqB0iDhM0VWNWDD1Gm9LQ/0do+MH3wvquxhvism/ArWMBrgRV/EVFYu0t5gsN/hdeklVAHlcl3ErlyAMd57Td+TuYh9l1R44zLjzMBF7NvqItAYcO6GWs/aWVGDOi7g3Biv"+
+"Y768NQJBvflzj17zj4/df+jm2UMBVn54Ca7guGzgwRiu1XG9QWZIqyRU7USeGsoMNHUqoh0HBj7sVhvhgMR0ANRUHkbr4CWzFAWPiEqW5rR5CZs7uY6ZIVZKEBRq8T4JT+zvoZy1XYfSnkUU09sDNEQPayhRbHXuUUmnqLcCCvvO6srJ7061AtxX7x/aV+9rXvnjte8d"+
+"/KUPN/qD3bGo5cYYUNtagYH9PV73DQ9qudm97/zo7dsPf/OGZ7eO5nWUTxSzWwOsU+9ThNqJci2Z8cnN5vhgL7+J9BOoI7IaItsH9aeOBgz2Qx0DNfOgxuuennD/S4Cmm3Zmx9CnEOlNpBPj4ZaVsFGpUWe6iZA598D8atli7uahPrsN5QLIxdgQdYRaPyukBkJtbiyv"+
+"znqdJcqs8sEaUGse/oMXn3rj+79+89E0LbKHqlH2Vj8t61HoLXko3bVgsDvnhyuJiJCmMQizhKgPu3Gg3D6F0gMDQw+LBOMWSDCQc7LsR41ME6BssKxPIaRQ5VG7tfceG3jv3oXZzhWyBCBP2Rnub0rxOCfyrrgiHk+3vpL5vegoPNyw7EWD9MZZHUgyyepQklmjco1e"+
+"mnkX5EY9yVmqMWxfBjZG3pt446wj6/tF3AuzzM6ulycURodXwE09NFYlDXDRPUeXyCii9yuRd6VIraGMwh1ysO67TeQdMHZO5CtoEvJA0tAbbdaA4Z2YN84aylPdxEN5bBJwI/OdOjWWOmPL8Au1nsoUMpOQxwzDQdVAGg2Nr6jwOfnN25Lk82JetYjTi3q6n5GrKs5G"+
+"XOdhPI4Asooz+iKyxd+AqapamPwLF3Xfju9MREElKHpHowDfAaF0sEOudKjkXwM7npZj9m0IyIbNBUosvM4aMLg9iypfzypgM4EJLhi4/4jHscpR5zx7yOu+7WWDETMeDGa+G6Mhd5Xss0lTdwemJ2laQprmApaHcDQwcg+P4kM7Xk3SU6EllZMNkBDCAd1VvJQIB/EI"+
+"sOPjiUDfIa7cEFdl42aQ3XhV6qYAlEQfrtoEDvv7AH3YB1du9HscMPLvw1V14Eqph/FqAoBXLtSll0FhKl9e2H7VasobhWhBIZTia3LKZWKjq6aGLBWpEyfvxaJtyvIIlkmKWbGVZsXWaayKjLO7sByCkdlE9ckh31KEzfx4Ad1zcdiPm6qmKeuNrgx8Wejk6nAHCnKL"+
+"6aN+BOArn4wZhXLtPBzIPxpclgeXFYalXzlYjAzAi6oe0nxpFtUUsn4DI1E1egxdrajkCCoPVrvZ2O45VFIo6x9+qdfnlZxyVNFWtqD0hlB6GmQ1BzLaBuXQc6imUBTKKkaoYgKVXIU/6AsvY0/fqAyqmqXNXI5TVdVFA9wEPAg3YaRZ/rcDD5390r0/3+9BBUqbuupd"+
+"kFukQlxPIIKgD6VNVaGOcP8U9EUJws1sqq5eFxOoQvBUXxf+ClCS+s0LGFjxCA8KsdWRix3hXlautNQeK13Cvjq5gwL6AWloPeHhyKIob4rgbPPUjz7+wr5Tr021AtIcf/13zj3/2a83sIiYPUgvzkEw8EBjItzIhvchbAbf+MDj/+p+vNHv8QCpC5CnEMI0Hyw2erm6"+
+"8IaoQrW/ySvZUwg3UCrVTR5I8uo8hABKfR6gEPtQ3kTOIBpKO0sDkNFmD4t74MmrAF14ODTWmTDqIsImEuWNbD2VeynhfRBVqGxu4OU4hEh9hDlFbwPKvT5C96C8gfc2RNSHsA9BDwv0fahIjEqPgvxqF7PjtyJYUFIHGPpQAr2D53lPM0rXBlpPWSM9v5LBMOvMZYdQ"+
+"r55Ca5AP3354onXr6E+m+pkz6T0taHoUdK7fE6T55A/efO0HP+Y395v/3PyvY4d++Jmb5WHSXV9Z/dYvPvi46lz3yqef/acrXlGdPT26p0d/mu/8rDqA2tV+udZ++dOqow66HsqfUz2b7/xp/tDq1Xzn9a0d+hb72sHrPj84jls711eHWL9BqdHFirR8+zA2T0yyZ55f"+
+"f1gWqWOaxOyEwJN6vCULv/oAB9+KoR8Z40b83B+tP0w4iZ/DIfLFDCKzU7lK+PIAuzB5wBcYY3YCz/7lNHXmelpWxIsalHecsS594J3Jp/12/Ny3cRin+uCMyrd/tsnpDPnSAovXiwlk12Z6TfDsl8TrpjrKwBcI1n3E+PqXH3qYeJPqLQKjI8z4zFdOPYxn5SqJYZ34"+
+"9S/LG/KNbjP+rnpsoL5937DtLtMVfHkWqJNYmiMd3ysxsXJmIm0qEmF9RAobD8DGlZDxeHhCiUK44Pa4h3kj0kQVlXgwQScMec0D6YoMfHMVCATRb6I71tsCE8xxtu4LTEJFqOxGDseiu4gO5QsZwVDWEOhFpVDiZXDkMZEJ5XjqXn0uiQQQtE4epO974IEKhpt0m4bu"+
+"SdqsCSUo3qPmCioD5MiAVh6ABWGCew0Y6Wf0gw2aYvl+rTqcRG5lWn8hdda7pM4DX0E3oYRaPnWv1ITUc6iU2jtFqdnNtB5fKFFaIPNo/dYEHtZY8ZPp8cw7Kq80R9LRB6Y1RW3XimBGj6rD/tjEJIcheXjkeCYFoN4wSF+bwaK+5+2iJF4vehEd0vVXp8jXmLkwc6JF"+
+"fK+1cGx+oXX15/Ark/+htfz3HXTweQfLvu4wtnzcYea+7bCyTztss7147EihkMzM3rK8eKLoriy272t94sRMu+3kPvpwL/jmw8s++fAHX3wEduu+mfZH7yiZrdWlI+Hw5x/R8Ncf5ezjj4r+9mNk8OlHdfjLj1H15BOd1lKhQkl45MhKZ2b2niNLi/MLndayU6TEunpu"+
+"pjNDrneWlhfnTs62lleor2e35g7cfT/1P3X3yYXOSZhtzywcK3/w2quvvfp6GJ88Ke9e+wHyWzTszCwfQ3JbM52Ty60VZ8K7+2T7ngPqi5qJMNc5sLjUmajNzrTbB+YX5uaXW7OdA4v3tZbbiwvHJtwTJ9ud+ftm2idbE+GJk52Zu9utA8fai3fPtFcmRhYWFzrLM0tL"+
+"8wvHDhxd6iAHE+Fy62hrubUw2zrQuX+ptTJRXJk/tnCgtdqZKKzMn5i79oPX/x8Jft3mXjQAAA==";
+const PACKED_JS=
+"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";
+(async function(){
+  const inflate=async function(b64){ const bin=atob(b64), u=new Uint8Array(bin.length); for(let i=0;i<u.length;i++) u[i]=bin.charCodeAt(i);
+    const ds=new DecompressionStream('gzip'), w=ds.writable.getWriter(); w.write(u); w.close(); return new Uint8Array(await new Response(ds.readable).arrayBuffer()); };
+  try{
+    const code=new TextDecoder().decode(await inflate(PACKED_JS));
+    const s=document.createElement('script'); s.textContent=code; document.body.appendChild(s);
+  }catch(err){
+    const el=document.getElementById('info-text'); if(el) el.textContent='ENGINE FAILED TO UNPACK ('+err.message+') — the pasted code is incomplete or altered; re-paste the full file.';
+    console.error(err);
+  }
+})();
+</script>
+</body>
+</html>

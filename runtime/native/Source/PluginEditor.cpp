@@ -3,11 +3,12 @@
 static juce::var slimManifest (const juce::var& m)
 {   // what the page-side bridge needs (bootOps are only for the engine)
     juce::DynamicObject::Ptr o = new juce::DynamicObject();
-    for (const char* k : { "name", "slug", "ui", "processors", "bindings", "params", "captureSampleRate" }) o->setProperty (k, m[k]);
+    for (const char* k : { "name", "slug", "ui", "processors", "bindings", "params", "captureSampleRate", "residentPage" }) o->setProperty (k, m[k]);
     return juce::var (o.get());
 }
 
-juce::WebBrowserComponent::Options H2PEditor::makeOptions()
+// ------------------------------------------------------------------------------------------------ H2PPage
+juce::WebBrowserComponent::Options H2PPage::makeOptions()
 {
     using Opt = juce::WebBrowserComponent::Options;
     juce::DynamicObject::Ptr init = new juce::DynamicObject();
@@ -47,30 +48,23 @@ juce::WebBrowserComponent::Options H2PEditor::makeOptions()
         });
 }
 
-H2PEditor::H2PEditor (H2PProcessor& p) : AudioProcessorEditor (&p), proc (p)
+H2PPage::H2PPage (H2PProcessor& p) : proc (p)
 {
-    const auto ui = proc.getManifest()["ui"];
-    const int w = juce::jlimit (400, 1800, (int) ui.getProperty ("width", 1000)), h = juce::jlimit (300, 1200, (int) ui.getProperty ("height", 700));
-    web.reset (new juce::WebBrowserComponent (makeOptions()));
-    addAndMakeVisible (*web);
-    setResizable (true, true);
-    setResizeLimits (400, 300, 2400, 1600);
-    setSize (w, h);
+    web.reset (new View (makeOptions()));
+    web->setSize (1000, 700);
     proc.onOutbox = [this] (const std::string& json) { if (web) web->evaluateJavascript ("window.__h2p && window.__h2p.receive(" + juce::String (json) + ");"); };
-    proc.setEditorOpen (true);
-    loadPage();
+    load();
     startTimerHz (30);
 }
 
-H2PEditor::~H2PEditor()
+H2PPage::~H2PPage()
 {
     stopTimer();
     proc.onOutbox = nullptr;
-    proc.setEditorOpen (false);
     web.reset();
 }
 
-void H2PEditor::loadPage()
+void H2PPage::load()
 {
     proc.markPageLoading();
     syncPending = false; receivedOps = false;
@@ -78,19 +72,43 @@ void H2PEditor::loadPage()
     web->goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
 }
 
-void H2PEditor::timerCallback()
+void H2PPage::timerCallback()
 {
-    if (proc.graphGeneration() != generationSeen) { loadPage(); return; }   // engine was rebuilt (sample-rate change): the page must rebuild its graph too
+    if (proc.graphGeneration() != generationSeen) { load(); return; }   // engine was rebuilt (sample-rate change): the page must rebuild its graph too
     if (syncPending && juce::Time::getMillisecondCounter() >= syncAtMs)
     {
         syncPending = false;
         web->evaluateJavascript ("window.__h2p && window.__h2p.applyHostParams && window.__h2p.applyHostParams(" + juce::String (proc.hostValuesJSON()) + ");");
-        juce::Timer::callAfterDelay (400, [sp = juce::Component::SafePointer<H2PEditor> (this)] { if (sp != nullptr) sp->proc.markPageSynced(); });
+        juce::Timer::callAfterDelay (400, [sp = juce::WeakReference<H2PProcessor> (&proc)] { if (sp != nullptr) sp->markPageSynced(); });
     }
     std::string dirty;
     if (proc.takeDirtyHostParams (dirty))
         web->evaluateJavascript ("window.__h2p && window.__h2p.applyHostParams && window.__h2p.applyHostParams(" + juce::String (dirty) + ");");
+    // hidden pages get their DOM timers throttled to ~1 s by WebKit; the shim keeps its own timer list and fires overdue ones on this pulse
+    if (! proc.isEditorOpen())
+        web->evaluateJavascript ("window.__h2p && window.__h2p.tick && window.__h2p.tick();");
+}
+
+// ------------------------------------------------------------------------------------------------ H2PEditor
+H2PEditor::H2PEditor (H2PProcessor& p) : AudioProcessorEditor (&p), proc (p)
+{
+    const auto ui = proc.getManifest()["ui"];
+    const int w = juce::jlimit (400, 1800, (int) ui.getProperty ("width", 1000)), h = juce::jlimit (300, 1200, (int) ui.getProperty ("height", 700));
+    page = proc.residentPage();
+    if (page == nullptr) { ownPage.reset (new H2PPage (proc)); page = ownPage.get(); }
+    addAndMakeVisible (page->component());
+    setResizable (true, true);
+    setResizeLimits (400, 300, 2400, 1600);
+    setSize (w, h);
+    proc.setEditorOpen (true);
+}
+
+H2PEditor::~H2PEditor()
+{
+    proc.setEditorOpen (false);
+    if (page != nullptr) removeChildComponent (&page->component());   // resident page survives; own page is destroyed below
+    ownPage.reset();
 }
 
 void H2PEditor::paint (juce::Graphics& g) { g.fillAll (juce::Colours::black); }
-void H2PEditor::resized() { if (web) web->setBounds (getLocalBounds()); }
+void H2PEditor::resized() { if (page != nullptr) page->component().setBounds (getLocalBounds()); }

@@ -80,11 +80,12 @@ async function forge(inputHtml, options = {}) {
   const msgs = eng.drainOutbox();
   const smoke = { inputDbfs: -20, outputDbfs: +outDb.toFixed(2), realtimeFactor: +(renderMs / 1000).toFixed(3), messagesFromWorklet: msgs.length, messageTypes: [...new Set(msgs.map(m => m.data && m.data.type).filter(Boolean))] };
   // 4. parameter table: descriptors ∪ keys of boot messages; types from bindings
-  const names = new Set(); for (const d of Object.values(processors)) for (const p of d) names.add(p.name); for (const k of Object.keys(boot.bootParams)) names.add(k);
+  const names = new Set(); for (const d of Object.values(processors)) for (const p of d) names.add(p.name); for (const k in boot.bindings) if (boot.bindings[k].uiParam) names.add(k); for (const k of Object.keys(boot.bootParams)) { if (boot.structuralOnly && boot.structuralOnly[k] && !boot.bindings[k]) { log.push(`param ${k}: only appears inside a structural (model/netlist) message and no UI control drives it -> not a host parameter`); continue; } names.add(k); }
   const params = [];
   for (const id of names) {
     const desc = Object.values(processors).flat().find(d => d.name === id); const b = boot.bindings[id] || null; const bootV = boot.bootParams[id];
     let p = { id, name: humanize(id), type: 'float', min: desc ? desc.minValue : undefined, max: desc ? desc.maxValue : undefined, default: bootV != null ? bootV : (desc ? desc.defaultValue : 0), source: desc ? (bootV != null ? 'descriptor+message' : 'descriptor') : 'message', binding: b };
+    if (b && b.uiParam) { const u = b.uiParam; p = { id, name: u.name || humanize(id), type: u.type, min: u.min, max: u.max, default: u.default, source: 'ui-state', binding: b }; if (u.type === 'choice') p.choices = u.choices; if (u.type === 'bool') { p.min = 0; p.max = 1; } params.push(p); continue; }
     if (b && (b.kind === 'choice' || b.kind === 'select')) { p.type = 'choice'; p.choices = b.options.map(o => ({ label: o.label, value: o.param !== undefined ? o.param : o.value })); }
     else if (b && (b.kind === 'click-toggle' || b.kind === 'checkbox')) { const vals = b.kind === 'checkbox' ? [b.offValue, b.onValue] : b.values.slice().sort((x, y) => x - y); if (vals.length === 2 && vals[0] === 0 && vals[1] === 1) p.type = 'bool'; else { p.type = 'choice'; p.choices = vals.map(v => ({ label: String(v), value: v })); } }
     else { if (b && b.min != null && (p.min == null || !isFinite(p.min))) p.min = b.min; if (b && b.max != null && (p.max == null || !isFinite(p.max))) p.max = b.max; if (b && b.kind === 'range') { p.step = b.step || 0; } }
@@ -100,9 +101,12 @@ async function forge(inputHtml, options = {}) {
   const bound = params.filter(p => p.binding).length;
   const manifest = {
     name: title, slug, vendor: options.vendor || 'html2plugin', version: options.version || '1.0.0', bundleId: `com.html2plugin.${slug.replace(/-/g, '')}`, ...codes(slug),
-    ui: { width: Math.min(Math.max(boot.uiSize.width, 700), 1600), height: Math.min(Math.max(boot.uiSize.height, 500), 1100), startSelector: boot.startControl ? boot.startControl.selector : null },
+    ui: { width: Math.min(Math.max(boot.uiSize.width, 700), 1600), height: Math.min(Math.max(boot.uiSize.height, 500), 1100), startSelector: boot.startControl ? boot.startControl.selector : null, startClicks: boot.startControl ? (boot.startControl.clicks || 1) : 1 },
     captureSampleRate: sampleRate, processors, params, bootOps: boot.bootOps, bindings: boot.bindings,
-    report: { boundParams: bound, totalParams: params.length, unboundParams: params.filter(p => !p.binding).map(p => p.id), startControl: boot.startControl, smoke, pageErrors: boot.errors.slice(0, 10), pageConsole: boot.consoleLog.slice(0, 10), warnings, unsupported, log },
+    // model/netlist messages cannot be synthesised from one host value: keep the page alive inside the processor so automation
+    // with the editor closed still runs through the page's own code (exact DSP) instead of a value-swapped replay
+    residentPage: (boot.structuralPosts || 0) > 0,
+    report: { boundParams: bound, totalParams: params.length, unboundParams: params.filter(p => !p.binding).map(p => p.id), startControl: boot.startControl, smoke, pageErrors: boot.errors.slice(0, 10), pageConsole: boot.consoleLog.slice(0, 10), warnings, unsupported, log, probeLog: boot.probeLog || [] },
   };
   // 5. shipped page: original HTML with remote assets inlined (so the plugin works offline)
   const shippedHtml = await inlineExternalAssets(inputHtml, log);
@@ -142,12 +146,14 @@ function report(m) {
     `- AudioWorklet processors: ${Object.keys(m.processors).map(k => `\`${k}\` (${m.processors[k].length} descriptors)`).join(', ')}`,
     `- Boot graph ops recorded: ${m.bootOps.length}; start control: ${r.startControl ? `\`${r.startControl.selector}\` ("${r.startControl.text}") auto-pressed` : 'none needed'}`,
     `- Smoke render (−20 dBFS 1 kHz, boot state): output ${r.smoke.outputDbfs} dBFS, ${r.smoke.messagesFromWorklet} messages (${r.smoke.messageTypes.join(', ')}), Node/V8 render cost ${(r.smoke.realtimeFactor * 100).toFixed(1)} % of realtime`,
-    `- Host parameters: ${r.totalParams}; two-way UI binding confirmed for ${r.boundParams}${r.unboundParams.length ? `; DSP-only (no UI control found): ${r.unboundParams.join(', ')}` : ''}`, '', '## Parameters', '', '| id | type | range / choices | default | UI control | binding |', '|---|---|---|---|---|---|'];
+    `- Host parameters: ${r.totalParams}; two-way UI binding confirmed for ${r.boundParams}${r.unboundParams.length ? `; DSP-only (no UI control found): ${r.unboundParams.join(', ')}` : ''}`,
+    `- Parameter path: ${m.residentPage ? 'resident page (the page sends model/netlist messages; it stays loaded inside the processor so host automation reaches the DSP through the page\'s own code even with the editor closed)' : 'engine replay (parameters are plain message values / AudioParams; no page needed while the editor is closed)'}`, '', '## Parameters', '', '| id | type | range / choices | default | UI control | binding |', '|---|---|---|---|---|---|'];
   for (const p of m.params) lines.push(`| ${p.id} | ${p.type} | ${p.type === 'choice' ? p.choices.map(c => c.label).join(' / ') : `${p.min} … ${p.max}`} | ${p.default} | ${p.binding ? p.binding.selector : '—'} | ${p.binding ? p.binding.kind : 'DSP only'} |`);
   if (r.warnings.length) lines.push('', '## Warnings', '', ...r.warnings.map(w => '- ' + w));
   if (r.unsupported.length) lines.push('', '## Unsupported', '', ...r.unsupported.map(w => '- ' + w));
   if (r.pageErrors.length) lines.push('', '## Page errors during headless boot (jsdom; canvas/network are stubbed, so some are expected)', '', ...r.pageErrors.map(w => '- ' + w));
   lines.push('', '## Log', '', ...r.log.map(w => '- ' + w), '');
+  if (r.probeLog && r.probeLog.length) lines.push('## UI probe log', '', ...r.probeLog.map(w => '- ' + w), '');
   return lines.join('\n');
 }
 
@@ -159,6 +165,7 @@ if (require.main === module) {
     const html = fs.readFileSync(input, 'utf8'); const out = arg('out', path.join('build', 'plugin'));
     const res = await forge(html, { name: arg('name'), vendor: arg('vendor'), slug: arg('slug'), sampleRate: arg('sr') });
     writeProject(out, res); console.log(report(res.manifest)); console.log('project written to', out);
+    process.stdout.write('', () => process.exit(0));   // closed jsdom pages can leave timers behind; the project is on disk, so leave
   })().catch(e => { console.error('forge failed:', e.message); process.exit(1); });
 }
 module.exports = { forge, writeProject, report };

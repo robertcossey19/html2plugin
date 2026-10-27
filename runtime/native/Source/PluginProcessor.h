@@ -10,6 +10,8 @@
 #include <functional>
 #include "JSHost.h"
 
+class H2PPage;
+
 struct H2PParamDef
 {
     juce::String id, name, type;        // type: float | bool | choice
@@ -51,12 +53,14 @@ public:
     std::string hostValuesJSON() const;                                   // {"id": engineeringValue, ...} for applyHostParams
     bool takeDirtyHostParams (std::string& json);                         // host/automation changes not yet shown in the UI
     int graphGeneration() const { return generation.load(); }            // bumps when the engine is rebuilt (editor must reload the page)
-    void setEditorOpen (bool open);                                       // also logs a graph snapshot in debug mode (H2P_DEBUG=1)
+    void setEditorOpen (bool open);
+    bool isEditorOpen() const { return editorOpen.load(); }                                       // also logs a graph snapshot in debug mode (H2P_DEBUG=1)
     void requestGraphDump() { dumpRequested = true; }                     // audio thread logs describe() on its next drain
     static bool debugEnabled();                                           // env H2P_DEBUG=1 or ~/Library/Logs/html2plugin/DEBUG exists
     std::function<void (const std::string&)> onOutbox;                    // raw outbox JSON for the page (set/cleared by the editor)
     juce::String lastEngineError;                                         // for display/logging
 
+    H2PPage* residentPage() const { return resident.get(); }             // non-null in resident-page mode (manifest.residentPage)
     const juce::var& getManifest() const { return manifest; }
     const std::vector<H2PParamDef>& paramDefs() const { return defs; }
     juce::AudioProcessorValueTreeState& state() { return apvts; }
@@ -90,6 +94,10 @@ private:
     std::unique_ptr<std::atomic<bool>[]> dirty;
     std::unique_ptr<std::atomic<juce::uint32>[]> hostSetMs;
 
+    std::unique_ptr<H2PPage> resident;                                    // hidden page kept alive with the processor (resident-page mode)
+    std::shared_ptr<std::atomic<bool>> alive { std::make_shared<std::atomic<bool>> (true) };
+    void createResidentPage();
+
     juce::AudioProcessorValueTreeState::ParameterLayout buildLayout();
     void loadManifest();
     double engineeringValue (int i) const;                                // current host value in page units
@@ -98,5 +106,6 @@ private:
     void applyAllHostParams();
     void flushEngineErrors (const char* stage);                           // message/prepare thread only
     void timerCallback() override;                                        // message thread: outbox dispatch
+    JUCE_DECLARE_WEAK_REFERENCEABLE (H2PProcessor)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (H2PProcessor)
 };

@@ -34,6 +34,25 @@
     if (hpc) Element.prototype.hasPointerCapture = function (id) { if (id === SYN_ID) return true; return hpc.call(this, id); };
   }
   const fire = (el, type, init) => { const Ev = type.startsWith('pointer') ? (window.PointerEvent || MouseEvent) : type === 'wheel' ? WheelEvent : type.startsWith('mouse') ? MouseEvent : Event; el.dispatchEvent(new Ev(type, Object.assign({ bubbles: true, cancelable: true, composed: true, view: window }, init || {}))); };
+  /* ---- visual-state parameters (ui_*): the control rebuilds the model and carries no plain value; its position is read from the DOM ---- */
+  const rotOf = x => { const m = /rotate\(\s*(-?[\d.]+)deg\s*\)/.exec((x.style && x.style.transform) || ''); return m ? parseFloat(m[1]) : null; };
+  const numOf = x => { if (x.children && x.children.length) return null; const m = /-?\d+(?:\.\d+)?/.exec(x.textContent || ''); return m ? parseFloat(m[0]) : null; };
+  const ariaOf = x => { const a = x.getAttribute('aria-valuenow'); return a == null || a === '' || isNaN(+a) ? null : +a; };
+  const readVisual = (b) => {
+    switch (b.kind) {
+      case 'wheel-visual': { const x = document.querySelector(b.indicator); if (!x) return null; const v = b.read === 'aria' ? ariaOf(x) : b.read === 'rotate' ? rotOf(x) : numOf(x); if (typeof v !== 'number') return null; const pos = (v - b.vmin) / ((b.vmax - b.vmin) || 1); return Math.min(1, Math.max(0, b.inverted ? 1 - pos : pos)); }
+      case 'state-choice': { const i = b.options.findIndex(o => { const e = document.querySelector(o.selector); return e && e.classList.contains(b.className); }); return i < 0 ? null : i; }
+      case 'state-toggle': { const e = document.querySelector(b.selector); return e ? (e.classList.contains(b.className) ? 1 : 0) : null; }
+      case 'select': { if (!b.uiParam) return null; const e = document.querySelector(b.selector); return e ? e.selectedIndex : null; }
+    }
+    return null;
+  };
+  const visualNames = Object.keys(bindings).filter(n => bindings[n].uiParam);
+  const lastVisual = {};
+  H.uiValue = name => readVisual(bindings[name]);
+  // UI -> host for visual parameters: compared on every engine tick (30 Hz) and reported through the engine's hostParams channel
+  function pollVisual() { if (applying) return; for (const n of visualNames) { const v = readVisual(bindings[n]); if (v == null || v === lastVisual[n]) continue; if (lastVisual[n] !== undefined) H.emit({ op: 'hostParam', name: n, value: v }); lastVisual[n] = v; } }
+  H.pollVisual = pollVisual;
   const nearest = (opts, v, key) => opts.reduce((best, o) => (best == null || Math.abs(o[key] - v) < Math.abs(best[key] - v)) ? o : best, null);
   function setFromHost(name, value) {
     const b = bindings[name]; if (!b) return false; const el = document.querySelector(b.selector); if (!el) return false;
@@ -41,7 +60,11 @@
     try {
       switch (b.kind) {
         case 'range': { const v = (value - (b.offset || 0)) / (b.scale || 1); el.value = String(b.step ? Math.round(v / b.step) * b.step : v); fire(el, 'input'); fire(el, 'change'); return true; }
-        case 'select': { const o = nearest(b.options, value, 'param'); if (!o) return false; if (el.selectedIndex !== o.index) { el.selectedIndex = o.index; fire(el, 'input'); fire(el, 'change'); } return true; }
+        case 'wheel-visual': { const cur = readVisual(b); if (cur == null) return false; const ticks = Math.round((value - cur) * b.ticks); const dir = ticks < 0 ? 100 : -100; for (let i = 0; i < Math.min(Math.abs(ticks), b.ticks + 5); i++) fire(el, 'wheel', { deltaY: dir, deltaMode: 0 }); lastVisual[name] = readVisual(b); return true; }
+        case 'state-choice': { const idx = Math.max(0, Math.min(b.options.length - 1, Math.round(value))); if (readVisual(b) !== idx) { const btn = document.querySelector(b.options[idx].selector); if (!btn) return false; btn.click(); } lastVisual[name] = idx; return true; }
+        case 'state-toggle': { const want = value >= 0.5 ? 1 : 0; if (readVisual(b) !== want) el.click(); lastVisual[name] = want; return true; }
+        case 'select': { if (b.uiParam) { const idx = Math.max(0, Math.min(el.options.length - 1, Math.round(value))); if (el.selectedIndex !== idx) { el.selectedIndex = idx; fire(el, 'input'); fire(el, 'change'); } lastVisual[name] = idx; return true; }
+          const o = nearest(b.options, value, 'param'); if (!o) return false; if (el.selectedIndex !== o.index) { el.selectedIndex = o.index; fire(el, 'input'); fire(el, 'change'); } return true; }
         case 'checkbox': { const want = Math.abs(value - b.onValue) < Math.abs(value - b.offValue); if (el.checked !== want) el.click(); return true; }
         case 'choice': { const o = nearest(b.options, value, 'value'); const btn = o && document.querySelector(o.selector); if (!btn) return false; if (current[name] !== o.value) btn.click(); return true; }
         case 'click-toggle': { const want = nearest(b.values.map(v => ({ v })), value, 'v').v; if (current[name] !== want) el.click(); return true; }
@@ -51,10 +74,11 @@
         case 'drag': {
           const cur = current[name]; if (typeof cur !== 'number' || !b.unitsPerPixelUp) return false;
           const r = el.getBoundingClientRect(); const x = r.left + r.width / 2, y0 = r.top + r.height / 2; const dy = (value - cur) / b.unitsPerPixelUp;
-          const common = { pointerId: SYN_ID, pointerType: 'mouse', isPrimary: true, clientX: x, screenX: x };
-          fire(el, 'pointerdown', Object.assign({ clientY: y0, screenY: y0, button: 0, buttons: 1 }, common));
-          for (const f of [0.5, 1, 1]) fire(el, 'pointermove', Object.assign({ clientY: y0 - dy * f, screenY: y0 - dy * f, buttons: 1 }, common)); // several moves: some pages apply linked/partner state one event late
-          fire(el, 'pointerup', Object.assign({ clientY: y0 - dy, screenY: y0 - dy, button: 0, buttons: 0 }, common));
+          const mouse = b.events === 'mouse'; const ev = t => mouse ? t.replace('pointer', 'mouse') : t;
+          const common = Object.assign({ clientX: x, screenX: x }, mouse ? {} : { pointerId: SYN_ID, pointerType: 'mouse', isPrimary: true });
+          fire(el, ev('pointerdown'), Object.assign({ clientY: y0, screenY: y0, button: 0, buttons: 1 }, common));
+          for (const f of [0.5, 1, 1]) fire(el, ev('pointermove'), Object.assign({ clientY: y0 - dy * f, screenY: y0 - dy * f, buttons: 1 }, common)); // several moves: some pages apply linked/partner state one event late
+          fire(el, ev('pointerup'), Object.assign({ clientY: y0 - dy, screenY: y0 - dy, button: 0, buttons: 0 }, common));
           // fine trim with the wheel if the page exposes a finer step than one pixel gives us
           if (b.wheelStep) { const after = current[name]; if (typeof after === 'number') { const t = Math.round((value - after) / b.wheelStep); const dir = t < 0 ? 100 : -100; for (let i = 0; i < Math.min(Math.abs(t), 50); i++) fire(el, 'wheel', { deltaY: dir, deltaMode: 0 }); } }
           return true;
@@ -75,7 +99,7 @@
       tries++; const el = document.querySelector(sel);
       const booted = H.contexts.length > 0 && H.nodesById.size > 1;
       if (booted || tries > 40) { clearInterval(t); return; }
-      if (el) { el.click(); log('auto-pressed', sel); }
+      if (el) { el.click(); log('auto-pressed', sel); const extra = (manifest.ui.startClicks || 1) - 1; for (let i = 0; i < extra; i++) setTimeout(() => { el.click(); log('auto-pressed again (restore state)', sel); }, 250 * (i + 1)); }
     }, 150);
   }
   if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(autoStart, 50); else window.addEventListener('DOMContentLoaded', () => setTimeout(autoStart, 50));

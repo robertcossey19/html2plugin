@@ -122,10 +122,12 @@ int main (int argc, char** argv)
                 for (auto& pt : *sweep)
                 {   // {id, value, outputDbfs}
                     auto* p = h.byId (pt["id"].toString()); if (! p) continue; float keep = p->getValue();
+                    const bool viaPage = (bool) pt.getProperty ("viaPage", false);   // resident page: the value travels host -> hidden page -> page JS -> engine
                     if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p)) r->setValueNotifyingHost (r->convertTo0to1 ((float) (double) pt["value"]));
+                    if (viaPage) for (int t = 0; t < 8; ++t) { juce::MessageManager::getInstance()->runDispatchLoopUntil (250); h.run (1000, -20, 0.1); }
                     auto y = tail (h.run (1000, -20, 0.8), 16384); double db = rmsDb (y);
-                    CHECK (std::abs (db - (double) pt["outputDbfs"]) < 0.5, "%s = %s: plugin %.2f vs Node %.2f dBFS", pt["id"].toString().toRawUTF8(), pt["value"].toString().toRawUTF8(), db, (double) pt["outputDbfs"]);
-                    p->setValueNotifyingHost (keep); h.run (1000, -20, 0.3);
+                    CHECK (std::abs (db - (double) pt["outputDbfs"]) < 0.5, "%s = %s: plugin %.2f vs Node %.2f dBFS%s", pt["id"].toString().toRawUTF8(), pt["value"].toString().toRawUTF8(), db, (double) pt["outputDbfs"], viaPage ? "  (through the resident page)" : "");
+                    p->setValueNotifyingHost (keep); if (viaPage) for (int t = 0; t < 8; ++t) { juce::MessageManager::getInstance()->runDispatchLoopUntil (250); h.run (1000, -20, 0.1); } h.run (1000, -20, 0.3);
                 }
         }
         else printf ("     golden file not readable: %s\n", goldenPath.toRawUTF8());

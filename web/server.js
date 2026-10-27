@@ -75,7 +75,7 @@ async function generate({ name, html, url }) {
   if (!slug) throw Object.assign(new Error('plugin name is empty after cleaning (letters, digits, hyphens)'), { status: 400 });
   const useUrl = !(html && html.trim());
   if (useUrl && !/^https?:\/\/\S+$/.test(String(url || '').trim())) throw Object.assign(new Error('paste the page HTML or give an http(s) URL'), { status: 400 });
-  if (!useUrl && !/registerProcessor\s*\(/.test(html)) throw Object.assign(new Error('no registerProcessor( in the page: the AudioWorklet module must be inline (template literal, Blob or <script type="worklet">)'), { status: 400 });
+  // no static registerProcessor( check: packed/minified pages build the worklet module at runtime; the forge captures it at boot and fails loudly if it never appears
   const rel = `inbox/${slug}.${useUrl ? 'url' : 'html'}`;
   const body = useUrl ? String(url).trim() + '\n' : html;
 
