@@ -114,6 +114,7 @@ H2PProcessor::~H2PProcessor()
     alive->store (false);
     stopTimer();
     resident.reset();
+    JSHost::recycle (std::move (js));
 }
 
 void H2PProcessor::createResidentPage()
@@ -143,11 +144,11 @@ void H2PProcessor::setFromEngineering (int i, double v)
 
 void H2PProcessor::rebuildEngine (double sr, int block)
 {
-    js.reset (new JSHost());
+    if (! js) js = JSHost::acquire();   // pooled slot: the same VM/context is re-initialised in place on every rate/block change
     std::string err;
     if (! js->init (sr, block, engineJs, workletsJs, hostNamesJson, err, (bool) manifest.getProperty ("usesWasm", false)))
     {
-        lastEngineError = err; js.reset();
+        lastEngineError = err; JSHost::recycle (std::move (js)); js.reset();
         log ("ENGINE INIT FAILED (plugin runs as pass-through): " + juce::String (err));
         log ("sizes: engine.js " + juce::String ((int) engineJs.size()) + " B, worklets.js " + juce::String ((int) workletsJs.size()) + " B, bootOps " + juce::String ((int) bootOpsJson.size()) + " B, hostNames " + juce::String (hostNamesJson));
         return;

@@ -48,6 +48,12 @@ var H2P = (function () {
   var ctx = null;
   return {
     init: function (sr, workletsCode, hostNamesJson) {
+      // Called again on every sample-rate / block change and for every plugin instance that reuses this slot: a fresh engine
+      // Context, the worklet module re-evaluated (so module-level reads of `sampleRate` see the new rate, exactly like a new
+      // AudioWorkletGlobalScope). The old graph becomes garbage. No global context is ever released and re-created (see
+      // JSHost::init: that path tripped JavaScriptCore's atom-table assertion inside auval on the 7th rate change).
+      ctx = null;
+      for (var k in WebAudioEngine.registry) delete WebAudioEngine.registry[k];
       ctx = new WebAudioEngine.Context(sr);
       ctx.addModule(workletsCode);
       ctx.setHostParamNames(JSON.parse(hostNamesJson));
@@ -85,13 +91,39 @@ static void returnGroup (JSContextGroupRef g) { if (g == nullptr) return; std::l
 JSHost::JSHost() {}
 JSHost::~JSHost() { release(); returnGroup (group); group = nullptr; }
 
+// Host pool: a JSHost (VM + global context + evaluated engine) is never destroyed while the process lives; a processor that
+// goes away hands its host back and the next processor re-initialises it in place. Contexts are therefore created exactly once
+// per concurrently alive instance slot.
+static std::vector<std::unique_ptr<JSHost>>& freeHosts() { static auto* v = new std::vector<std::unique_ptr<JSHost>>(); return *v; }   // intentionally never destroyed: no JSC teardown during process exit
+std::unique_ptr<JSHost> JSHost::acquire()
+{
+    std::lock_guard<std::mutex> lk (poolMutex()); auto& f = freeHosts();
+    if (! f.empty()) { auto h = std::move (f.back()); f.pop_back(); return h; }
+    return std::unique_ptr<JSHost> (new JSHost());
+}
+void JSHost::recycle (std::unique_ptr<JSHost> h)
+{
+    if (! h) return;
+    h->ready = false; h->nativeErrors.clear();
+    std::lock_guard<std::mutex> lk (poolMutex()); freeHosts().push_back (std::move (h));
+}
+
 void JSHost::release()
 {
     if (ctx == nullptr) return;
     for (JSObjectRef* o : { &api, &fnRender, &fnApply, &fnDrain, &fnHostParam, &fnErrors, &fnDescribe, &taInL, &taInR, &taOutL, &taOutR })
         if (*o != nullptr) { JSValueUnprotect (ctx, *o); *o = nullptr; }
-    JSGlobalContextRelease (ctx);           // the context goes; the VM (group) stays and is reused by the next init()
+    JSGlobalContextRelease (ctx);
     ctx = nullptr; ready = false;
+}
+
+// Drop the per-init JS references (typed arrays, functions) but keep the context alive for re-initialisation.
+void JSHost::dropInitRefs()
+{
+    if (ctx == nullptr) return;
+    for (JSObjectRef* o : { &api, &fnRender, &fnApply, &fnDrain, &fnHostParam, &fnErrors, &fnDescribe, &taInL, &taInR, &taOutL, &taOutR })
+        if (*o != nullptr) { JSValueUnprotect (ctx, *o); *o = nullptr; }
+    ready = false;
 }
 
 std::string JSHost::toStdString (JSValueRef v)
@@ -162,24 +194,32 @@ JSObjectRef JSHost::makeFloat32Array (std::vector<float>& storage)
 bool JSHost::init (double sampleRate, int maxBlockSize, const std::string& engineJs, const std::string& workletsJs,
                    const std::string& hostParamNamesJson, std::string& err, bool wantWasm)
 {
-    release();
+    dropInitRefs();
     currentSampleRate = sampleRate; maxBlock = std::max (maxBlockSize, 128);
-   #if H2P_STATIC_JSC
-    engineInfo = prepareStaticJSC (wantWasm);
-   #else
-    engineInfo = "Apple JavaScriptCore.framework (JIT only when the host process carries com.apple.security.cs.allow-jit)";
-   #endif
-    if (group == nullptr) group = acquireGroup();   // JSC_* env is read here, by the first VM init in the process
-   #if H2P_STATIC_JSC
-    forgetStaticJSCEnv();
-   #endif
-    if (group == nullptr) { err = "JSContextGroupCreate failed"; return false; }
-    ctx = JSGlobalContextCreateInGroup (group, nullptr);
-    if (ctx == nullptr) { err = "JSGlobalContextCreateInGroup failed"; return false; }
-    global = JSContextGetGlobalObject (ctx);
-
-    if (! evaluate (engineJs, "engine.js", err)) return false;
-    if (! evaluate (kGlue, "glue.js", err)) return false;
+    const bool fresh = (ctx == nullptr);
+    if (fresh)
+    {
+       #if H2P_STATIC_JSC
+        engineInfo = prepareStaticJSC (wantWasm);
+       #else
+        engineInfo = "Apple JavaScriptCore.framework (JIT only when the host process carries com.apple.security.cs.allow-jit)";
+       #endif
+        if (group == nullptr) group = acquireGroup();   // JSC_* env is read here, by the first VM init in the process
+       #if H2P_STATIC_JSC
+        forgetStaticJSCEnv();
+       #endif
+        if (group == nullptr) { err = "JSContextGroupCreate failed"; return false; }
+        ctx = JSGlobalContextCreateInGroup (group, nullptr);
+        if (ctx == nullptr) { err = "JSGlobalContextCreateInGroup failed"; return false; }
+        global = JSContextGetGlobalObject (ctx);
+        if (! evaluate (engineJs, "engine.js", err)) return false;
+        if (! evaluate (kGlue, "glue.js", err)) return false;
+    }
+    else if (engineJs != loadedEngineJs)
+    {   // a different plugin's engine in a recycled slot cannot happen (one binary = one engine), but never run the wrong code silently
+        err = "recycled JS context carries a different engine"; return false;
+    }
+    loadedEngineJs = engineJs;
 
     JSStringRef k = JSStringCreateWithUTF8CString ("H2P");
     JSValueRef apiV = JSObjectGetProperty (ctx, global, k, nullptr);

@@ -2,6 +2,7 @@
 // One instance per processor; all calls after init() happen on the audio thread (JSC takes its own VM lock per call).
 #pragma once
 #include <string>
+#include <memory>
 #include <vector>
 #include <JavaScriptCore/JavaScript.h>   // C API only: present in Apple's framework and in the statically linked open-source build
 
@@ -10,6 +11,8 @@ class JSHost
 public:
     JSHost();
     ~JSHost();
+    static std::unique_ptr<JSHost> acquire();          // pooled: a slot's VM + context is created once and re-initialised in place
+    static void recycle (std::unique_ptr<JSHost> h);   // hand the slot back when the processor dies (never destroys the context)
 
     // Evaluates engine + glue + worklet modules and creates the engine Context. Returns false (and fills err) on failure.
     bool init (double sampleRate, int maxBlockSize, const std::string& engineJs, const std::string& workletsJs,
@@ -40,6 +43,8 @@ private:
     JSObjectRef taInL = nullptr, taInR = nullptr, taOutL = nullptr, taOutR = nullptr;
     std::vector<float> bInL, bInR, bOutL, bOutR;
     bool ready = false;
+    std::string loadedEngineJs;
+    void dropInitRefs();
     std::vector<std::string> nativeErrors;
     void noteException (const char* where, JSValueRef exc) { if (nativeErrors.size() < 32) nativeErrors.push_back (std::string (where) + ": " + exceptionText (exc)); }
 
