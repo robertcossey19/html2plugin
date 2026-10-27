@@ -11,7 +11,7 @@ The page is not rewritten. Inside the plugin:
 
 ## Use
 
-1. **Web app** (`web/`): paste the page, hit **Generate VST3 + AU**, download when the build lands (~9–12 min). No login or token: the backend (`web/server.js`) commits to `inbox/` with its own repo-scoped deploy key (`web/.secrets/deploy_key`, git-ignored). Build status is read from the public GitHub API from your browser (60 req/h; when that runs out the app falls back to tag detection through the backend and still finds the release). Run it yourself: `cd web && node server.js` (port 8000) and open `public/index.html` from a local server.
+1. **Web app** (`web/`): paste the page, hit **Generate VST3 + AU**, download when the build lands (~30–40 min). No login or token: the backend (`web/server.js`) commits to `inbox/` with its own repo-scoped deploy key (`web/.secrets/deploy_key`, git-ignored). Build status is read from the public GitHub API from your browser (60 req/h; when that runs out the app falls back to tag detection through the backend and still finds the release). Run it yourself: `cd web && node server.js` (port 8000) and open `public/index.html` from a local server.
 2. Or just commit the page to `inbox/<slug>.html` (or a URL to `inbox/<slug>.url`) and push.
 3. A Release `<slug>-build-N` appears with `<Name>-VST3-Installer.pkg`, `<Name>-AU-Installer.pkg`, `<Name>-Installer-VST3+AU.pkg`, zips, `REPORT.md` and SHA256SUMS.
 
