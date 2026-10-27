@@ -222,6 +222,7 @@ int main (int argc, char** argv)
                 const int rc = system (cmd.toRawUTF8());
                 printf ("     editor screenshot (%dx%d at %d,%d): %s -> %s\n", b.getWidth(), b.getHeight(), b.getX(), b.getY(), shot, rc == 0 && juce::File (shot).existsAsFile() ? "written" : "not captured (no window server?)");
             }
+            printf ("     editor after the page rendered: %dx%d (the page's natural layout, fitted to this screen)\n", ed->getWidth(), ed->getHeight());
             auto y = tail (h.run (1000, -20, 0.5), 16384);
             CHECK (finite (y) && rmsDb (y) > -80, "audio still finite with the web UI open 8 s (%.2f dBFS)", rmsDb (y));
             CHECK (std::abs (rmsDb (y) - defaultDb) < 1.0, "level with UI-built graph %.2f dBFS matches boot-replay graph %.2f dBFS (page graph == captured graph)", rmsDb (y), defaultDb);

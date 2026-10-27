@@ -16,6 +16,12 @@ public:
     ~H2PPage() override;
     juce::Component& component() { return *web; }
     void load();
+    bool hasReceivedOps() const { return receivedOps; }
+    // Natural layout size of the page: the union of its (non viewport-stretching) boxes measured at a wide probe viewport,
+    // plus its own margins. Result arrives asynchronously as (width, height) in CSS px; (0, 0) if it cannot be measured.
+    void measureNaturalSize (std::function<void (int, int)> done);
+    // CSS zoom applied to the document so a page laid out at its natural size fills an editor of a different size exactly
+    void setZoom (double scale);
 
 private:
     // JUCE reloads the last URL every time the component (re)appears in a window, which would reboot the page (and the
@@ -36,7 +42,7 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (H2PPage)
 };
 
-class H2PEditor : public juce::AudioProcessorEditor
+class H2PEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
     explicit H2PEditor (H2PProcessor&);
@@ -48,5 +54,12 @@ private:
     H2PProcessor& proc;
     std::unique_ptr<H2PPage> ownPage;   // non-resident mode
     H2PPage* page = nullptr;            // the page shown (own or the processor's resident one)
+    // The page is shown at its own natural layout (what the browser shows on a desktop window), scaled to fit the screen
+    // and to the user's resizing with a fixed aspect ratio; CSS zoom keeps the layout identical at any window size.
+    int natW = 0, natH = 0; bool measuring = false, measured = false; juce::uint32 openedAt = 0;
+    juce::ComponentBoundsConstrainer aspect;
+    void timerCallback() override;
+    void adoptNaturalSize (int w, int h);
+    void applyZoom();
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (H2PEditor)
 };

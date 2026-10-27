@@ -54,6 +54,7 @@ public:
     bool takeDirtyHostParams (std::string& json);                         // host/automation changes not yet shown in the UI
     int graphGeneration() const { return generation.load(); }            // bumps when the engine is rebuilt (editor must reload the page)
     void setEditorOpen (bool open);
+    double editorScale = 0;                                                                        // last editor scale chosen by the user (0 = auto-fit)
     bool isEditorOpen() const { return editorOpen.load(); }                                       // also logs a graph snapshot in debug mode (H2P_DEBUG=1)
     void requestGraphDump() { dumpRequested = true; }                     // audio thread logs describe() on its next drain
     static bool debugEnabled();                                           // env H2P_DEBUG=1 or ~/Library/Logs/html2plugin/DEBUG exists
