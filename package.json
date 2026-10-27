@@ -2,7 +2,7 @@
   "name": "html2plugin",
   "version": "1.0.0",
   "scripts": {
-    "test": "node tests/run-analogexact.js && node tests/shim-roundtrip.js && node tests/hostparam.js && node tests/ui-bridge.js",
+    "test": "node tests/run-analogexact.js && node tests/shim-roundtrip.js && node tests/hostparam.js && node tests/ui-bridge.js && node tests/ui-toggle-ulp.js",
     "forge": "node forge/index.js"
   },
   "keywords": [],

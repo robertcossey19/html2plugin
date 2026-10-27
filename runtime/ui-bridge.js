@@ -54,6 +54,12 @@
   function pollVisual() { if (applying) return; for (const n of visualNames) { const v = readVisual(bindings[n]); if (v == null || v === lastVisual[n]) continue; if (lastVisual[n] !== undefined) H.emit({ op: 'hostParam', name: n, value: v }); lastVisual[n] = v; } }
   H.pollVisual = pollVisual;
   const nearest = (opts, v, key) => opts.reduce((best, o) => (best == null || Math.abs(o[key] - v) < Math.abs(best[key] - v)) ? o : best, null);
+  // The page computes its own values (1073: inGain = 1/(gain1k*inScale*outScale) through Math.exp/log) and JavaScriptCore's libm
+  // differs from V8's by ULPs, so the forge's measured option values and the live page's never compare equal with !==. Discrete
+  // controls are compared by the option they are nearest to, never by exact float equality (a mismatch here double-clicks the
+  // control and silently undoes the host's change).
+  const near = (a, b) => typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(b));
+  const sameOption = (opts, key, cur, want) => typeof cur === 'number' && nearest(opts, cur, key) === nearest(opts, want, key);
   function setFromHost(name, value) {
     const b = bindings[name]; if (!b) return false; const el = document.querySelector(b.selector); if (!el) return false;
     applying = true;
@@ -66,10 +72,10 @@
         case 'select': { if (b.uiParam) { const idx = Math.max(0, Math.min(el.options.length - 1, Math.round(value))); if (el.selectedIndex !== idx) { el.selectedIndex = idx; fire(el, 'input'); fire(el, 'change'); } lastVisual[name] = idx; return true; }
           const o = nearest(b.options, value, 'param'); if (!o) return false; if (el.selectedIndex !== o.index) { el.selectedIndex = o.index; fire(el, 'input'); fire(el, 'change'); } return true; }
         case 'checkbox': { const want = Math.abs(value - b.onValue) < Math.abs(value - b.offValue); if (el.checked !== want) el.click(); return true; }
-        case 'choice': { const o = nearest(b.options, value, 'value'); const btn = o && document.querySelector(o.selector); if (!btn) return false; if (current[name] !== o.value) btn.click(); return true; }
-        case 'click-toggle': { const want = nearest(b.values.map(v => ({ v })), value, 'v').v; if (current[name] !== want) el.click(); return true; }
-        case 'click-set': { if (current[name] !== b.value && Math.abs(value - b.value) < 1e-9) el.click(); return true; }
-        case 'click-cycle': { for (let i = 0; i < b.values.length + 1 && Math.abs((current[name] ?? NaN) - value) > 1e-9; i++) el.click(); return true; }
+        case 'choice': { const o = nearest(b.options, value, 'value'); const btn = o && document.querySelector(o.selector); if (!btn) return false; if (!sameOption(b.options, 'value', current[name], o.value)) btn.click(); return true; }
+        case 'click-toggle': { const opts = b.values.map(v => ({ v })); const want = nearest(opts, value, 'v').v; if (!sameOption(opts, 'v', current[name], want)) el.click(); return true; }
+        case 'click-set': { if (!near(current[name], b.value) && Math.abs(value - b.value) < 1e-9) el.click(); return true; }
+        case 'click-cycle': { for (let i = 0; i < b.values.length + 1 && !near(current[name], value); i++) el.click(); return true; }
         case 'wheel': { const cur = current[name]; if (typeof cur !== 'number' || !b.step) return false; const ticks = Math.round((value - cur) / b.step); const dir = ticks < 0 ? 100 : -100; for (let i = 0; i < Math.min(Math.abs(ticks), 400); i++) fire(el, 'wheel', { deltaY: dir, deltaMode: 0 }); return true; }
         case 'drag': {
           const cur = current[name]; if (typeof cur !== 'number' || !b.unitsPerPixelUp) return false;

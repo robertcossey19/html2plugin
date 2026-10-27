@@ -252,7 +252,9 @@ jobs:
           echo "installed bundles: valid signature, no quarantine attribute"
           killall -9 AudioComponentRegistrar 2>/dev/null || true; sleep 2
           mkdir -p "$GITHUB_WORKSPACE/testlogs"
-          auval -v aufx "$CODE" "$MANU" 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/auval.txt"
+          # auval under lldb like every other test host: a crash inside the plugin prints a backtrace instead of a silent exit
+          dbg() { perl -e 'alarm shift; exec @ARGV' 1700 xcrun lldb --batch -o run -k "thread backtrace all" -k "quit 1" -- "$@"; }
+          dbg "$(xcrun -f auval 2>/dev/null || command -v auval)" -v aufx "$CODE" "$MANU" 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/auval.txt"
           grep -q "AU VALIDATION SUCCEEDED" "$GITHUB_WORKSPACE/testlogs/auval.txt"
       - name: pluginval strictness 10 (VST3 + AU)
         env: { NAME: "${{ steps.id.outputs.name }}" }

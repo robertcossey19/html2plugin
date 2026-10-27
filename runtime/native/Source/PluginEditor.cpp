@@ -110,6 +110,7 @@ H2PEditor::~H2PEditor()
     stopTimer();
     proc.setEditorOpen (false);
     if (page != nullptr && measured) page->setZoom (1.0);
+    if (page != nullptr && measuring) page->component().setBounds (0, 0, 1000, 700);   // back to the hidden page's default size, not the probe size
     if (page != nullptr) removeChildComponent (&page->component());   // resident page survives; own page is destroyed below
     ownPage.reset();
 }
@@ -131,7 +132,13 @@ void H2PEditor::timerCallback()
     if (page->hasReceivedOps() && waited < 400) return;      // one layout pass after the scripts
     stopTimer(); measuring = true;
     page->component().setBounds (0, 0, 1600, 1200);           // desktop-width probe viewport (clipped by the editor for a frame)
-    page->measureNaturalSize ([this] (int w, int h) { measuring = false; adoptNaturalSize (w, h); });
+    // The measurement answers asynchronously from WebKit; if the host closed the editor meanwhile (pluginval opens and
+    // closes editors in quick succession) the reply is cancelled and still delivered -- to a destroyed editor unless guarded.
+    page->measureNaturalSize ([self = juce::Component::SafePointer<H2PEditor> (this)] (int w, int h)
+    {
+        if (self == nullptr) return;
+        self->measuring = false; self->adoptNaturalSize (w, h);
+    });
 }
 
 void H2PEditor::adoptNaturalSize (int w, int h)
