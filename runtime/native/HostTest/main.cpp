@@ -29,7 +29,15 @@ static juce::String asset (const char* name)
 struct Host
 {
     std::unique_ptr<juce::AudioPluginInstance> plug; double fs = 48000; int block = 512; double lastRenderSeconds = 0;
-    juce::AudioProcessorParameter* byId (const juce::String& id) { for (auto* p : plug->getParameters()) if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p)) if (r->paramID == id) return p; return nullptr; }
+    // hosted VST3/AU parameters carry numeric IDs (hash of the JUCE paramID), so a golden point is matched by its string ID when
+    // available and otherwise by the parameter name the plugin publishes (golden.json carries both)
+    juce::AudioProcessorParameter* byId (const juce::String& id, const juce::String& name = {})
+    {
+        for (auto* p : plug->getParameters()) if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p)) if (r->paramID == id) return p;
+        for (auto* p : plug->getParameters()) if (p->getParameterID() == id) return p;
+        if (name.isNotEmpty()) for (auto* p : plug->getParameters()) if (p->getName (64) == name) return p;
+        return nullptr;
+    }
     std::vector<float> run (double f0, double dbfs, double secs, bool silence = false)
     {
         int total = (int) (fs * secs); std::vector<float> out; out.reserve ((size_t) total);
@@ -119,16 +127,46 @@ int main (int argc, char** argv)
             CHECK (std::abs (gDb - defaultDb) < 0.5, "level: plugin %.2f dBFS vs Node %.2f dBFS (|d| < 0.5 dB)", defaultDb, gDb);
             CHECK (gThd < 0.05 ? defaultThd < 0.1 : std::abs (defaultThd - gThd) / gThd < 0.25, "THD: plugin %.3f %% vs Node %.3f %% (within 25 %%)", defaultThd, gThd);
             if (auto* sweep = g["sweep"].getArray())
+            {
+                int matched = 0;
+                auto pump = [&] (int rounds) { for (int t = 0; t < rounds; ++t) { juce::MessageManager::getInstance()->runDispatchLoopUntil (250); h.run (1000, -20, 0.1); } };
+                auto normOf = [] (const juce::var& pt, juce::AudioProcessorParameter* p) -> float
+                {
+                    if (pt.hasProperty ("norm")) return (float) (double) pt["norm"];
+                    if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p)) return r->convertTo0to1 ((float) (double) pt["value"]);
+                    return (float) (double) pt["value"];
+                };
+                // Resident page: the hidden WKWebView may take seconds to come up (CI runners under lldb: ~20 s for the WebContent
+                // process). Warm up on the viaPage point with the largest level change until the audio reacts, then sweep.
+                bool anyVia = false; for (auto& pt : *sweep) if ((bool) pt.getProperty ("viaPage", false)) anyVia = true;
+                if (anyVia)
+                {
+                    const juce::var* best = nullptr; double bestDelta = 0;
+                    for (auto& pt : *sweep) { if (! (bool) pt.getProperty ("viaPage", false)) continue; const double d = std::abs ((double) pt["outputDbfs"] - gDb); if (h.byId (pt["id"].toString(), pt["name"].toString()) && d > bestDelta) { bestDelta = d; best = &pt; } }
+                    if (best != nullptr && bestDelta > 0.5)
+                    {
+                        auto* p = h.byId ((*best)["id"].toString(), (*best)["name"].toString()); const float keep = p->getValue();
+                        p->setValueNotifyingHost (normOf (*best, p));
+                        const double t0 = juce::Time::getMillisecondCounterHiRes(); double db = defaultDb; int rounds = 0;
+                        while (rounds < 240 && std::abs (db - (double) (*best)["outputDbfs"]) > 0.5) { pump (1); ++rounds; db = rmsDb (tail (h.run (1000, -20, 0.4), 16384)); }
+                        const double secs = (juce::Time::getMillisecondCounterHiRes() - t0) / 1000.0;
+                        CHECK (rounds < 240, "resident page live: %s reached the DSP through the page after %.1f s (plugin %.2f vs Node %.2f dBFS)", (*best)["id"].toString().toRawUTF8(), secs, db, (double) (*best)["outputDbfs"]);
+                        p->setValueNotifyingHost (keep); pump (8); h.run (1000, -20, 0.3);
+                    }
+                }
                 for (auto& pt : *sweep)
-                {   // {id, value, outputDbfs}
-                    auto* p = h.byId (pt["id"].toString()); if (! p) continue; float keep = p->getValue();
+                {   // {id, name, norm, value, outputDbfs, viaPage}
+                    auto* p = h.byId (pt["id"].toString(), pt["name"].toString()); if (! p) { printf ("     (golden point %s: no hosted parameter with that id/name)\n", pt["id"].toString().toRawUTF8()); continue; }
+                    ++matched; float keep = p->getValue();
                     const bool viaPage = (bool) pt.getProperty ("viaPage", false);   // resident page: the value travels host -> hidden page -> page JS -> engine
-                    if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p)) r->setValueNotifyingHost (r->convertTo0to1 ((float) (double) pt["value"]));
-                    if (viaPage) for (int t = 0; t < 8; ++t) { juce::MessageManager::getInstance()->runDispatchLoopUntil (250); h.run (1000, -20, 0.1); }
+                    p->setValueNotifyingHost (normOf (pt, p));
+                    if (viaPage) pump (8);
                     auto y = tail (h.run (1000, -20, 0.8), 16384); double db = rmsDb (y);
                     CHECK (std::abs (db - (double) pt["outputDbfs"]) < 0.5, "%s = %s: plugin %.2f vs Node %.2f dBFS%s", pt["id"].toString().toRawUTF8(), pt["value"].toString().toRawUTF8(), db, (double) pt["outputDbfs"], viaPage ? "  (through the resident page)" : "");
-                    p->setValueNotifyingHost (keep); if (viaPage) for (int t = 0; t < 8; ++t) { juce::MessageManager::getInstance()->runDispatchLoopUntil (250); h.run (1000, -20, 0.1); } h.run (1000, -20, 0.3);
+                    p->setValueNotifyingHost (keep); if (viaPage) pump (8); h.run (1000, -20, 0.3);
                 }
+                CHECK (sweep->isEmpty() || matched > 0, "golden sweep points matched to hosted parameters (%d of %d)", matched, sweep->size());
+            }
         }
         else printf ("     golden file not readable: %s\n", goldenPath.toRawUTF8());
     }

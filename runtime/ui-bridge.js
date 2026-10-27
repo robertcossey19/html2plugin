@@ -73,6 +73,7 @@
         case 'wheel': { const cur = current[name]; if (typeof cur !== 'number' || !b.step) return false; const ticks = Math.round((value - cur) / b.step); const dir = ticks < 0 ? 100 : -100; for (let i = 0; i < Math.min(Math.abs(ticks), 400); i++) fire(el, 'wheel', { deltaY: dir, deltaMode: 0 }); return true; }
         case 'drag': {
           const cur = current[name]; if (typeof cur !== 'number' || !b.unitsPerPixelUp) return false;
+          if (Math.abs(value - cur) <= Math.abs(b.wheelStep || b.unitsPerPixelUp) * 1e-3) return true;   // already there: no synthetic gesture (a gesture makes the page re-post its params)
           const r = el.getBoundingClientRect(); const x = r.left + r.width / 2, y0 = r.top + r.height / 2; const dy = (value - cur) / b.unitsPerPixelUp;
           const mouse = b.events === 'mouse'; const ev = t => mouse ? t.replace('pointer', 'mouse') : t;
           const common = Object.assign({ clientX: x, screenX: x }, mouse ? {} : { pointerId: SYN_ID, pointerType: 'mouse', isPrimary: true });

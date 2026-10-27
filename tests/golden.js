@@ -27,5 +27,7 @@ const g = { sampleRate: sr, block, inputDbfs: -20, outputDbfs: +rmsDb(y).toFixed
 // host pumps the message loop before measuring.
 const cands = manifest.params.filter(p => p.source !== 'ui-state').slice(0, 8);
 for (const p of cands) { const e2 = fresh(); let v = p.default; if (p.type === 'float') v = p.max; else if (p.type === 'bool') v = p.default ? 0 : 1; else if (p.type === 'choice') { const other = p.choices.find(c => c.value !== p.default); v = other ? other.value : p.default; }
-  e2.hostParam(p.id, v); const yy = tail(run(e2, 1000, -20, 0.8), 16384); g.sweep.push({ id: p.id, value: v, outputDbfs: +rmsDb(yy).toFixed(3), viaPage: !!(manifest.residentPage && manifest.bindings && manifest.bindings[p.id]) }); }
+  // norm: the 0..1 value a host passes for this point (hosted VST3/AU parameters expose numeric IDs, so HostTest matches on name and sets the normalised value)
+  let norm = 0; if (p.type === 'float') norm = (v - p.min) / ((p.max - p.min) || 1); else if (p.type === 'bool') norm = v >= 0.5 ? 1 : 0; else if (p.type === 'choice') { const i = p.choices.findIndex(c => c.value === v); norm = p.choices.length > 1 ? Math.max(0, i) / (p.choices.length - 1) : 0; }
+  e2.hostParam(p.id, v); const yy = tail(run(e2, 1000, -20, 0.8), 16384); g.sweep.push({ id: p.id, name: p.name || p.id, norm: +norm.toFixed(6), value: v, outputDbfs: +rmsDb(yy).toFixed(3), viaPage: !!(manifest.residentPage && manifest.bindings && manifest.bindings[p.id]) }); }
 fs.writeFileSync(out, JSON.stringify(g, null, 1)); console.log(JSON.stringify(g));

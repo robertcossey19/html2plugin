@@ -2,6 +2,8 @@
 #include "PluginEditor.h"
 #include "BinaryData.h"
 #include <iostream>
+#include <algorithm>
+#include <cmath>
 
 void H2PProcessor::log (const juce::String& line)
 {
@@ -226,8 +228,10 @@ void H2PProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
     const juce::uint32 nowMs = juce::Time::getMillisecondCounter();
     for (size_t i = 0; i < defs.size(); ++i)
     {
-        const double v = engineeringValue ((int) i);
-        if (v != lastApplied[i].load())
+        const double v = engineeringValue ((int) i), last = lastApplied[i].load();
+        // tolerance: a host echoes our own setValueNotifyingHost back as a float through its automation lane; the last-bit jitter of
+        // that round trip must not count as a change, or a page-reported value would ping-pong host <-> page forever
+        if (std::abs (v - last) > 1e-6 * std::max (1.0, std::abs (last)))
         {   // resident page + bound control: the page's own code is the only path that yields the exact DSP state (model rebuilds);
             // a value-swapped replay would be a transient approximation, so it is skipped. Unbound/plain parameters replay as before.
             if (! (resident != nullptr && defs[i].bound)) js->hostParam (defs[i].id.toStdString(), v);
