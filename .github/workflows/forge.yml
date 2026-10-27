@@ -273,7 +273,7 @@ jobs:
           cd plugins/${{ matrix.slug }}
           HT="build/${TARGET}HostTest_artefacts/Release/${TARGET}HostTest"
           dbg() { perl -e 'alarm shift; exec @ARGV' 1700 xcrun lldb --batch -o run -k "thread backtrace all" -k "quit 1" -- "$@"; }
-          dbg "$HT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" --editor --golden golden.json 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt"
+          H2P_SHOT="$GITHUB_WORKSPACE/testlogs/$NAME-editor-screenshot.png" dbg "$HT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" --editor --golden golden.json 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt"
           grep -q "ALL PASSED (0 failures)" "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt"
           echo "--- AU through the same host test ---"
           dbg "$HT" "/Library/Audio/Plug-Ins/Components/$NAME.component" --golden golden.json 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/hosttest-au.txt"
@@ -335,7 +335,8 @@ jobs:
           CPU=$(grep -h "render cost" testlogs/hosttest-vst3.txt | head -1 | sed 's/^ *//'); CPU2=$(grep -h "render cost" testlogs/hosttest-nojit.txt | head -1 | sed 's/^ *//')
           JIT=$(grep -h "JavaScriptCore:" testlogs/hosttest-vst3.txt | head -1 | sed 's/.*JavaScriptCore: //')
           BOUND=$(grep -m1 "two-way UI binding" plugins/${{ matrix.slug }}/REPORT.md || true)
-          gh release create "$TAG" plugins/${{ matrix.slug }}/build/${TARGET}_artefacts/Release/out/* --repo "${{ github.repository }}" \
+          SHOT=$(ls testlogs/*-editor-screenshot.png 2>/dev/null | head -1)
+          gh release create "$TAG" plugins/${{ matrix.slug }}/build/${TARGET}_artefacts/Release/out/* ${SHOT:+"$SHOT"} testlogs/hosttest-vst3.txt --repo "${{ github.repository }}" \
             --title "$NAME — macOS VST3 + AU (build ${{ github.run_number }})" \
             --notes "$(printf 'Universal (Apple Silicon + Intel). Double-click **%s-Installer-VST3+AU.pkg** then rescan plugins in Logic / Cubase.\n\nTests on this build: installer, auval, pluginval strictness 10 (VST3 + AU), HostTest incl. golden master vs Node/V8, editor open with audio.\n\n%s\n\nCPU (HostTest, 48 kHz / 512): %s\nCPU with JIT disabled: %s\nJavaScriptCore in the test host: %s\n\nSigning: %s' "$SAFE" "$BOUND" "$CPU" "$CPU2" "${JIT:-unknown}" "${SIGNING_NOTE:-ad-hoc}")"
 

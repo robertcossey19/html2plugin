@@ -215,6 +215,13 @@ int main (int argc, char** argv)
             juce::DocumentWindow win (H2P_TARGET_NAME, juce::Colours::black, juce::DocumentWindow::allButtons);
             win.setContentNonOwned (ed.get(), true); win.setVisible (true); win.toFront (true);
             for (int i = 0; i < 16; i++) { juce::MessageManager::getInstance()->runDispatchLoopUntil (500); h.run (1000, -20, 0.1); }
+            if (const char* shot = getenv ("H2P_SHOT"))
+            {   // proof the web UI (incl. its CSS/SVG animations) renders inside the plugin window: capture the editor's screen region
+                const auto b = win.getScreenBounds();
+                const juce::String cmd = "screencapture -x -R" + juce::String (b.getX()) + "," + juce::String (b.getY()) + "," + juce::String (b.getWidth()) + "," + juce::String (b.getHeight()) + " \"" + juce::String (shot) + "\"";
+                const int rc = system (cmd.toRawUTF8());
+                printf ("     editor screenshot (%dx%d at %d,%d): %s -> %s\n", b.getWidth(), b.getHeight(), b.getX(), b.getY(), shot, rc == 0 && juce::File (shot).existsAsFile() ? "written" : "not captured (no window server?)");
+            }
             auto y = tail (h.run (1000, -20, 0.5), 16384);
             CHECK (finite (y) && rmsDb (y) > -80, "audio still finite with the web UI open 8 s (%.2f dBFS)", rmsDb (y));
             CHECK (std::abs (rmsDb (y) - defaultDb) < 1.0, "level with UI-built graph %.2f dBFS matches boot-replay graph %.2f dBFS (page graph == captured graph)", rmsDb (y), defaultDb);
