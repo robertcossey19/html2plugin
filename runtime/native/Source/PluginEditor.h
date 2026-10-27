@@ -20,6 +20,7 @@ public:
     // Natural layout size of the page: the union of its (non viewport-stretching) boxes measured at a wide probe viewport,
     // plus its own margins. Result arrives asynchronously as (width, height) in CSS px; (0, 0) if it cannot be measured.
     void measureNaturalSize (std::function<void (int, int)> done);
+    bool nativeZoom = false;                                                   // last zoom went through WebKit page zoom
     // CSS zoom applied to the document so a page laid out at its natural size fills an editor of a different size exactly
     void setZoom (double scale);
 

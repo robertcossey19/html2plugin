@@ -170,8 +170,14 @@ void H2PEditor::applyZoom()
     page->setZoom (scale);
 }
 
+extern "C" int h2p_setPageZoom (void* nsViewRoot, double zoom);   // WebZoom.mm
+
 void H2PPage::setZoom (double scale)
 {
+    // Preferred: WebKit page zoom (keeps the author's responsive layout, see WebZoom.mm). Fallback: CSS zoom.
+    if (auto* peer = web->getPeer())
+        if (h2p_setPageZoom (peer->getNativeHandle(), scale) == 1) { nativeZoom = true; web->evaluateJavascript ("document.documentElement.style.zoom = '';"); return; }
+    if (nativeZoom) { nativeZoom = false; H2PProcessor::log ("editor: web view not reachable for page zoom, using CSS zoom"); }
     web->evaluateJavascript ("document.documentElement.style.zoom = " + juce::String (scale, 5) + ";");
 }
 
@@ -179,6 +185,7 @@ void H2PPage::measureNaturalSize (std::function<void (int, int)> done)
 {
     // The union of all rendered boxes that do not simply stretch to the viewport (page backdrops), plus the page's own
     // margins (capped) -> what the author sees in a desktop browser window. Fixed-position elements are ignored.
+    if (auto* peer = web->getPeer()) h2p_setPageZoom (peer->getNativeHandle(), 1.0);   // measure the unzoomed layout
     static const char* script = R"JS((() => {
   const de = document.documentElement, vw = innerWidth; de.style.zoom = '';
   const inter = (a, b) => ({ left: Math.max(a.left, b.left), top: Math.max(a.top, b.top), right: Math.min(a.right, b.right), bottom: Math.min(a.bottom, b.bottom) });

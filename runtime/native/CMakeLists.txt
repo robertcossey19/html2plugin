@@ -56,7 +56,10 @@ set_target_properties(${H2P_TARGET}Data PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_sources(${H2P_TARGET} PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/WebZoom.mm
     Source/JSHost.cpp)
+set_source_files_properties(Source/WebZoom.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+target_link_libraries(${H2P_TARGET} PRIVATE "-framework WebKit")
 
 target_compile_definitions(${H2P_TARGET} PUBLIC
     H2P_TARGET_NAME="${H2P_TARGET}"
