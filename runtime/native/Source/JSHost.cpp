@@ -186,12 +186,16 @@ struct JSHost::Worker
         }
         drain();
     }
+    struct Ticket { std::mutex m; std::condition_variable cv; bool done = false; };
     void runSync (const std::function<void()>& f)
     {
-        std::mutex dm; std::condition_variable dcv; bool done = false;
-        { std::lock_guard<std::mutex> lk (m); jobs.push_back ([&] { f(); { std::lock_guard<std::mutex> l2 (dm); done = true; } dcv.notify_all(); }); }
+        // The completion handshake lives on the heap and is co-owned by the job: the caller's frame may be gone by the time
+        // the engine thread leaves notify_all() (a stack-resident ticket smashed the caller's stack in build-37, and hung
+        // build-36). Notify under the lock so the waiter cannot run ahead of the signaller either.
+        auto t = std::make_shared<Ticket>();
+        { std::lock_guard<std::mutex> lk (m); jobs.push_back ([&f, t] { f(); std::lock_guard<std::mutex> l2 (t->m); t->done = true; t->cv.notify_all(); }); }
         CFRunLoopSourceSignal (src); CFRunLoopWakeUp (rl);
-        std::unique_lock<std::mutex> lk (dm); dcv.wait (lk, [&] { return done; });
+        std::unique_lock<std::mutex> lk (t->m); t->cv.wait (lk, [&] { return t->done; });
     }
 };
 
