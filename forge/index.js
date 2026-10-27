@@ -106,6 +106,8 @@ async function forge(inputHtml, options = {}) {
     // model/netlist messages cannot be synthesised from one host value: keep the page alive inside the processor so automation
     // with the editor closed still runs through the page's own code (exact DSP) instead of a value-swapped replay
     residentPage: (boot.structuralPosts || 0) > 0,
+    // the plugin enables WebAssembly in its JavaScriptCore only for pages that use it (worklet source or a module travelling in a message)
+    usesWasm: /WebAssembly/.test(modules.map(m => typeof m === 'string' ? m : (m.source || '')).join('\n')) || /"__wasm"/.test(JSON.stringify(boot.bootOps)),
     report: { boundParams: bound, totalParams: params.length, unboundParams: params.filter(p => !p.binding).map(p => p.id), startControl: boot.startControl, smoke, pageErrors: boot.errors.slice(0, 10), pageConsole: boot.consoleLog.slice(0, 10), warnings, unsupported, log, probeLog: boot.probeLog || [] },
   };
   // 5. shipped page: original HTML with remote assets inlined (so the plugin works offline)

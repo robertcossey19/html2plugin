@@ -16,7 +16,7 @@
 static bool setJit = false; static std::vector<std::string> setVars;
 static void setIfUnset (const char* k, const char* v) { if (getenv (k) == nullptr) { setenv (k, v, 1); setVars.emplace_back (k); } }
 static void forgetStaticJSCEnv() { if (setJit) unsetenv ("JSC_useJIT"); for (auto& k : setVars) unsetenv (k.c_str()); setJit = false; setVars.clear(); }
-static const char* prepareStaticJSC()
+static const char* prepareStaticJSC (bool wantWasm)
 {
     static const char* verdict = nullptr;
     if (verdict != nullptr) return verdict;
@@ -30,11 +30,12 @@ static const char* prepareStaticJSC()
     // JSC_* variables are read once, by the bundled engine's first VM init (inside JSGlobalContextCreate below); they are
     // removed again right after so the host's own copy of Apple's JavaScriptCore never sees them.
     if (! jitMem && getenv ("JSC_useJIT") == nullptr) { setenv ("JSC_useJIT", "false", 1); setJit = true; }
-    // WebAssembly stays ON (pages ship wasm DSP engines), but in somebody else's process we must not install signal handlers:
-    // bounds-checked (non-fast) memories, no SIGBUS/SIGSEGV fault handler, polling VM traps. Without JIT, wasm runs on IPInt.
-    setIfUnset ("JSC_useWasmFastMemory", "false");
-    setIfUnset ("JSC_useWasmFaultSignalHandler", "false");
-    setIfUnset ("JSC_usePollingTraps", "true");
+    // WebAssembly only for pages that ship a wasm DSP engine (manifest usesWasm). Plugins without wasm keep the exact JSC
+    // configuration that has been validated (build 24): wasm off, default VM traps. With wasm on, inside somebody else's
+    // process we must not install fault handlers: bounds-checked (non-fast) memories, no SIGBUS/SIGSEGV handler; without JIT
+    // the wasm runs on IPInt.
+    if (! wantWasm) setIfUnset ("JSC_useWasm", "false");
+    else { setIfUnset ("JSC_useWasmFastMemory", "false"); setIfUnset ("JSC_useWasmFaultSignalHandler", "false"); }
     verdict = jitMem ? "bundled JavaScriptCore (static), MAP_JIT memory available in this host"
                      : "bundled JavaScriptCore (static), host forbids MAP_JIT memory -> interpreter";
     return verdict;
@@ -159,12 +160,12 @@ JSObjectRef JSHost::makeFloat32Array (std::vector<float>& storage)
 }
 
 bool JSHost::init (double sampleRate, int maxBlockSize, const std::string& engineJs, const std::string& workletsJs,
-                   const std::string& hostParamNamesJson, std::string& err)
+                   const std::string& hostParamNamesJson, std::string& err, bool wantWasm)
 {
     release();
     currentSampleRate = sampleRate; maxBlock = std::max (maxBlockSize, 128);
    #if H2P_STATIC_JSC
-    engineInfo = prepareStaticJSC();
+    engineInfo = prepareStaticJSC (wantWasm);
    #else
     engineInfo = "Apple JavaScriptCore.framework (JIT only when the host process carries com.apple.security.cs.allow-jit)";
    #endif

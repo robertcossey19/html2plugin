@@ -143,7 +143,7 @@ void H2PProcessor::rebuildEngine (double sr, int block)
 {
     js.reset (new JSHost());
     std::string err;
-    if (! js->init (sr, block, engineJs, workletsJs, hostNamesJson, err))
+    if (! js->init (sr, block, engineJs, workletsJs, hostNamesJson, err, (bool) manifest.getProperty ("usesWasm", false)))
     {
         lastEngineError = err; js.reset();
         log ("ENGINE INIT FAILED (plugin runs as pass-through): " + juce::String (err));

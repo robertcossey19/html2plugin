@@ -13,7 +13,7 @@ public:
 
     // Evaluates engine + glue + worklet modules and creates the engine Context. Returns false (and fills err) on failure.
     bool init (double sampleRate, int maxBlockSize, const std::string& engineJs, const std::string& workletsJs,
-               const std::string& hostParamNamesJson, std::string& err);
+               const std::string& hostParamNamesJson, std::string& err, bool wantWasm = false);
 
     // Process n frames (n <= maxBlockSize). zeroLatency only when every block is a multiple of 128.
     void render (const float* inL, const float* inR, float* outL, float* outR, int n, bool zeroLatency);
