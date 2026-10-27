@@ -4,9 +4,19 @@
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
+#include <thread>
+#include <deque>
+#include <functional>
+#include <condition_variable>
 #if H2P_STATIC_JSC
  #include <dlfcn.h>
  #include <sys/mman.h>
+ #include <pthread.h>
+ #include <CoreFoundation/CoreFoundation.h>
+ #if __has_include(<pthread/tsd_private.h>)
+  #include <pthread/tsd_private.h>
+  #define H2P_HAVE_TSD_DIRECT 1
+ #endif
 #endif
 
 #if H2P_STATIC_JSC
@@ -88,8 +98,114 @@ static JSContextGroupRef acquireGroup()
 }
 static void returnGroup (JSContextGroupRef g) { if (g == nullptr) return; std::lock_guard<std::mutex> lk (poolMutex()); freeGroups().push_back (g); }
 
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Thread policy for the bundled engine.
+// Apple's JavaScriptCore/WebKit (mapped into this process by the editor's WKWebView, and by most DAWs on their own) and the
+// engine linked into this binary are two separate copies of WTF. Both keep the per-thread WTF::Thread object in the same fixed
+// pthread TSD slot (__PTK_FRAMEWORK_JAVASCRIPTCORE_KEY2, see wtf/FastTLS.h: "WTF_THREAD_DATA_KEY"), and neither can tell the
+// other's object from its own. Whichever copy initialises a thread first owns the slot; the other then reads a foreign object
+// through its own struct layout. Seen in auval (builds 30/32/34/35): RELEASE_ASSERT in JSC::Heap::collect, atom-table mismatch,
+// the first time our GC ran on the host's main thread after WebKit had been used there. Rule, enforced below:
+//   * the bundled engine never runs on the process main thread (WebKit lives there in every host and in auval);
+//   * any other thread is clean iff the slot is still empty the first time this code sees it — true for every DAW audio thread,
+//     which is where render() is called, so the real-time path stays a direct call with no hop;
+//   * work arriving on an unclean thread is executed synchronously on a private engine thread ("h2p-js") that runs a CFRunLoop
+//     (so JavaScriptCore's own GC/sweeper timers fire there) and never touches WebKit. The VM is always created on that thread.
+// With Apple's framework instead of the bundled engine there is only one WTF and every thread is clean.
+#if H2P_STATIC_JSC
+static bool currentThreadCleanForBundledJSC()
+{
+    enum : int { Unknown = 0, Clean = 1, Foreign = 2 };
+    static thread_local int state = Unknown;
+    if (state == Unknown)
+    {
+        if (pthread_main_np() != 0) state = Foreign;
+        else
+        {
+           #if H2P_HAVE_TSD_DIRECT
+            state = _pthread_getspecific_direct (__PTK_FRAMEWORK_JAVASCRIPTCORE_KEY2) == nullptr ? Clean : Foreign;
+           #else
+            state = pthread_getspecific ((pthread_key_t) 92) == nullptr ? Clean : Foreign;   // 92 == __PTK_FRAMEWORK_JAVASCRIPTCORE_KEY2
+           #endif
+        }
+    }
+    return state == Clean;
+}
+
+struct JSHost::Worker
+{
+    std::thread th;
+    CFRunLoopRef rl = nullptr;
+    CFRunLoopSourceRef src = nullptr;
+    std::mutex m; std::condition_variable cv;
+    bool started = false, stopping = false;
+    std::deque<std::function<void()>> jobs;
+
+    Worker()
+    {
+        th = std::thread ([this] { loop(); });
+        std::unique_lock<std::mutex> lk (m); cv.wait (lk, [this] { return started; });
+    }
+    ~Worker()
+    {
+        { std::lock_guard<std::mutex> lk (m); stopping = true; }
+        if (rl != nullptr) CFRunLoopStop (rl);
+        if (th.joinable()) th.join();
+        if (src != nullptr) CFRelease (src);
+        if (rl != nullptr) CFRelease (rl);
+    }
+    static void perform (void* info) { static_cast<Worker*> (info)->drain(); }
+    void drain()
+    {
+        for (;;)
+        {
+            std::function<void()> job;
+            { std::lock_guard<std::mutex> lk (m); if (jobs.empty()) return; job = std::move (jobs.front()); jobs.pop_front(); }
+            job();
+        }
+    }
+    void loop()
+    {
+        pthread_setname_np ("h2p-js");
+        pthread_set_qos_class_self_np (QOS_CLASS_USER_INTERACTIVE, 0);
+        rl = CFRunLoopGetCurrent(); CFRetain (rl);
+        CFRunLoopSourceContext c {}; c.info = this; c.perform = &Worker::perform;
+        src = CFRunLoopSourceCreate (kCFAllocatorDefault, 0, &c);
+        CFRunLoopAddSource (rl, src, kCFRunLoopDefaultMode);
+        { std::lock_guard<std::mutex> lk (m); started = true; } cv.notify_all();
+        for (;;)
+        {
+            { std::lock_guard<std::mutex> lk (m); if (stopping) break; }
+            CFRunLoopRun();
+        }
+        drain();
+    }
+    void runSync (const std::function<void()>& f)
+    {
+        std::mutex dm; std::condition_variable dcv; bool done = false;
+        { std::lock_guard<std::mutex> lk (m); jobs.push_back ([&] { f(); { std::lock_guard<std::mutex> l2 (dm); done = true; } dcv.notify_all(); }); }
+        CFRunLoopSourceSignal (src); CFRunLoopWakeUp (rl);
+        std::unique_lock<std::mutex> lk (dm); dcv.wait (lk, [&] { return done; });
+    }
+};
+
+bool JSHost::threadClean() { return currentThreadCleanForBundledJSC(); }
+void JSHost::runOnWorker (const std::function<void()>& f)
+{
+    if (worker != nullptr && std::this_thread::get_id() == worker->th.get_id()) { f(); return; }
+    if (worker == nullptr) worker.reset (new Worker());
+    worker->runSync (f);
+}
+#else
+struct JSHost::Worker {};
+bool JSHost::threadClean() { return true; }
+void JSHost::runOnWorker (const std::function<void()>& f) { f(); }
+#endif
+// ---------------------------------------------------------------------------------------------------------------------
+
 JSHost::JSHost() {}
-JSHost::~JSHost() { release(); returnGroup (group); group = nullptr; }
+JSHost::~JSHost() { if (ctx != nullptr || group != nullptr) run ([this] { release(); returnGroup (group); group = nullptr; }, true); worker.reset(); }
 
 // Host pool: a JSHost (VM + global context + evaluated engine) is never destroyed while the process lives; a processor that
 // goes away hands its host back and the next processor re-initialises it in place. Contexts are therefore created exactly once
@@ -193,6 +309,14 @@ JSObjectRef JSHost::makeFloat32Array (std::vector<float>& storage)
 
 bool JSHost::init (double sampleRate, int maxBlockSize, const std::string& engineJs, const std::string& workletsJs,
                    const std::string& hostParamNamesJson, std::string& err, bool wantWasm)
+{   // always on the engine thread: the VM (and its run loop, which carries JSC's GC timers) is born there
+    bool ok = false;
+    run ([&] { ok = initImpl (sampleRate, maxBlockSize, engineJs, workletsJs, hostParamNamesJson, err, wantWasm); }, true);
+    return ok;
+}
+
+bool JSHost::initImpl (double sampleRate, int maxBlockSize, const std::string& engineJs, const std::string& workletsJs,
+                       const std::string& hostParamNamesJson, std::string& err, bool wantWasm)
 {
     dropInitRefs();
     currentSampleRate = sampleRate; maxBlock = std::max (maxBlockSize, 128);
@@ -260,10 +384,15 @@ bool JSHost::init (double sampleRate, int maxBlockSize, const std::string& engin
 void JSHost::render (const float* inL, const float* inR, float* outL, float* outR, int n, bool zeroLatency)
 {
     if (! ready || n <= 0) return;
+    run ([&] { renderImpl (inL, inR, outL, outR, n, zeroLatency); });   // direct call on a clean audio thread; a hop only on WebKit-touched threads (auval renders on main)
+}
+
+void JSHost::renderImpl (const float* inL, const float* inR, float* outL, float* outR, int n, bool zeroLatency)
+{
     if (n > maxBlock)
     {   // host lied about the max block: process in chunks (zero latency not possible unless chunks are multiples of 128)
         int done = 0;
-        while (done < n) { int m = std::min (maxBlock, n - done); render (inL + done, inR + done, outL + done, outR + done, m, zeroLatency && (m % 128 == 0)); done += m; }
+        while (done < n) { int m = std::min (maxBlock, n - done); renderImpl (inL + done, inR + done, outL + done, outR + done, m, zeroLatency && (m % 128 == 0)); done += m; }
         return;
     }
     std::memcpy (bInL.data(), inL, sizeof (float) * (size_t) n);
@@ -284,6 +413,10 @@ void JSHost::render (const float* inL, const float* inR, float* outL, float* out
 void JSHost::applyOpsJSON (const std::string& opsJson)
 {
     if (! ready) return;
+    run ([&] { applyOpsJSONImpl (opsJson); });
+}
+void JSHost::applyOpsJSONImpl (const std::string& opsJson)
+{
     JSStringRef s = JSStringCreateWithUTF8CString (opsJson.c_str());
     JSValueRef args[1] = { JSValueMakeString (ctx, s) };
     JSValueRef exc = nullptr;
@@ -295,6 +428,10 @@ void JSHost::applyOpsJSON (const std::string& opsJson)
 std::string JSHost::drainOutboxJSON (bool withAnalysers)
 {
     if (! ready) return {};
+    std::string r; run ([&] { r = drainOutboxJSONImpl (withAnalysers); }); return r;
+}
+std::string JSHost::drainOutboxJSONImpl (bool withAnalysers)
+{
     JSValueRef args[1] = { JSValueMakeBoolean (ctx, withAnalysers) };
     JSValueRef exc = nullptr;
     JSValueRef r = JSObjectCallAsFunction (ctx, fnDrain, api, 1, args, &exc);
@@ -305,6 +442,10 @@ std::string JSHost::drainOutboxJSON (bool withAnalysers)
 int JSHost::hostParam (const std::string& name, double value)
 {
     if (! ready) return 0;
+    int r = 0; run ([&] { r = hostParamImpl (name, value); }); return r;
+}
+int JSHost::hostParamImpl (const std::string& name, double value)
+{
     JSStringRef s = JSStringCreateWithUTF8CString (name.c_str());
     JSValueRef args[2] = { JSValueMakeString (ctx, s), JSValueMakeNumber (ctx, value) };
     JSValueRef exc = nullptr;
@@ -318,6 +459,10 @@ int JSHost::hostParam (const std::string& name, double value)
 std::string JSHost::takeErrors()
 {
     if (! ready) return "[]";
+    std::string r; run ([&] { r = takeErrorsImpl(); }); return r;
+}
+std::string JSHost::takeErrorsImpl()
+{
     JSValueRef exc = nullptr;
     JSValueRef r = JSObjectCallAsFunction (ctx, fnErrors, api, 0, nullptr, &exc);
     if (exc != nullptr || r == nullptr) return "[]";
@@ -327,6 +472,10 @@ std::string JSHost::takeErrors()
 std::string JSHost::describe()
 {
     if (! ready || fnDescribe == nullptr) return "{}";
+    std::string r; run ([&] { r = describeImpl(); }); return r;
+}
+std::string JSHost::describeImpl()
+{
     JSValueRef exc = nullptr;
     JSValueRef r = JSObjectCallAsFunction (ctx, fnDescribe, api, 0, nullptr, &exc);
     if (exc != nullptr || r == nullptr) return "{}";

@@ -13,6 +13,7 @@ extern "C" int h2p_snapshotWebView (void* nsViewOfWindowContent, const char* png
 #include <complex>
 #include <cstdio>
 #include <chrono>
+#include <thread>
 #include <exception>
 #include <execinfo.h>
 #include <unistd.h>
@@ -43,14 +44,21 @@ struct Host
     {
         int total = (int) (fs * secs); std::vector<float> out; out.reserve ((size_t) total);
         juce::AudioBuffer<float> buf (2, block); juce::MidiBuffer midi; double ph = 0, a = std::pow (10.0, dbfs / 20);
-        auto t0 = std::chrono::steady_clock::now();
-        for (int done = 0; done < total; done += block)
+        // processBlock runs on a dedicated non-message thread, as in every DAW. That is the plugin's direct engine path (the
+        // bundled JavaScriptCore must never run on a thread Apple's WebKit has used; see JSHost.cpp "Thread policy"); auval
+        // covers the other path, rendering on its main thread.
+        std::thread audio ([&]
         {
-            for (int n = 0; n < block; n++) { float s = silence ? 0.f : (float) (a * std::sin (ph)); ph += 2 * M_PI * f0 / fs; buf.setSample (0, n, s); buf.setSample (1, n, s); }
-            plug->processBlock (buf, midi);
-            for (int n = 0; n < block; n++) out.push_back (buf.getSample (0, n));
-        }
-        lastRenderSeconds = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
+            auto t0 = std::chrono::steady_clock::now();
+            for (int done = 0; done < total; done += block)
+            {
+                for (int n = 0; n < block; n++) { float s = silence ? 0.f : (float) (a * std::sin (ph)); ph += 2 * M_PI * f0 / fs; buf.setSample (0, n, s); buf.setSample (1, n, s); }
+                plug->processBlock (buf, midi);
+                for (int n = 0; n < block; n++) out.push_back (buf.getSample (0, n));
+            }
+            lastRenderSeconds = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
+        });
+        audio.join();
         return out;
     }
 };

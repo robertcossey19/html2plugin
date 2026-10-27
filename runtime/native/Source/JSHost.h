@@ -1,9 +1,13 @@
-// JSHost — runs engine/webaudio-engine.js + the page's untouched AudioWorklet module(s) inside Apple's JavaScriptCore.
-// One instance per processor; all calls after init() happen on the audio thread (JSC takes its own VM lock per call).
+// JSHost — runs engine/webaudio-engine.js + the page's untouched AudioWorklet module(s) inside JavaScriptCore (bundled static
+// build when H2P_STATIC_JSC, else Apple's framework). One instance per processor; all calls after init() happen on the audio
+// thread (JSC takes its own VM lock per call). With the bundled engine, calls are only ever executed on threads Apple's WebKit
+// has never touched (see "Thread policy" in JSHost.cpp): the audio thread directly, anything else via a private engine thread.
 #pragma once
 #include <string>
 #include <memory>
 #include <vector>
+#include <functional>
+#include <utility>
 #include <JavaScriptCore/JavaScript.h>   // C API only: present in Apple's framework and in the statically linked open-source build
 
 class JSHost
@@ -36,6 +40,22 @@ public:
     int maxBlock = 0;
 
 private:
+    struct Worker; std::unique_ptr<Worker> worker;                 // private engine thread (bundled JSC only), created on first unclean-thread call
+    static bool threadClean();                                     // may the bundled engine run on the calling thread?
+    void runOnWorker (const std::function<void()>& f);             // synchronous hop to the engine thread
+    template <class F> void run (F&& f, bool forceWorker = false)  // clean thread: plain call, nothing allocated (audio thread)
+    {
+        if (! forceWorker && threadClean()) { f(); return; }
+        runOnWorker (std::function<void()> (std::forward<F> (f)));
+    }
+    bool initImpl (double, int, const std::string&, const std::string&, const std::string&, std::string&, bool);
+    void renderImpl (const float*, const float*, float*, float*, int, bool);
+    void applyOpsJSONImpl (const std::string&);
+    std::string drainOutboxJSONImpl (bool);
+    int hostParamImpl (const std::string&, double);
+    std::string takeErrorsImpl();
+    std::string describeImpl();
+
     JSGlobalContextRef ctx = nullptr;
     JSContextGroupRef group = nullptr;   // the VM. Pooled per process and never destroyed: see JSHost.cpp acquireGroup()
     JSObjectRef global = nullptr, api = nullptr;
