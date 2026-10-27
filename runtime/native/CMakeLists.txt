@@ -88,7 +88,8 @@ if(APPLE)
         message(STATUS "html2plugin: static JavaScriptCore from ${H2P_JSC_DIR} (JIT independent of the host's allow-jit entitlement)")
         target_include_directories(${H2P_TARGET} BEFORE PRIVATE "${H2P_JSC_DIR}/include")
         target_compile_definitions(${H2P_TARGET} PRIVATE H2P_STATIC_JSC=1 JSC_OBJC_API_ENABLED=0)
-        target_sources(${H2P_TARGET} PRIVATE Source/JSCEmbedderStubs.cpp)
+        target_sources(${H2P_TARGET} PRIVATE Source/JSCEmbedderStubs.cpp Source/WTFTLSGuard.cpp)
+        set_source_files_properties(Source/WTFTLSGuard.cpp PROPERTIES COMPILE_FLAGS "-fno-lto")   # must stay a plain object so its _pthread_key_init_np wins over libSystem at link
         target_link_libraries(${H2P_TARGET} PRIVATE
             "${H2P_JSC_DIR}/lib/libJavaScriptCore.a" "${H2P_JSC_DIR}/lib/libWTF.a" "${H2P_JSC_DIR}/lib/libbmalloc.a"
             "${H2P_JSC_DIR}/lib/libmimalloc.a"

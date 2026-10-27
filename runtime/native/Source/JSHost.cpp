@@ -113,6 +113,8 @@ static void returnGroup (JSContextGroupRef g) { if (g == nullptr) return; std::l
 //   * work arriving on an unclean thread is executed synchronously on a private engine thread ("h2p-js") that runs a CFRunLoop
 //     (so JavaScriptCore's own GC/sweeper timers fire there) and never touches WebKit. The VM is always created on that thread.
 // With Apple's framework instead of the bundled engine there is only one WTF and every thread is clean.
+// The second half of the collision — both WTFs registering a thread-exit destructor for that slot, first one wins process-wide,
+// so the other copy's Thread objects get torn down by foreign code when their threads exit — is handled in WTFTLSGuard.cpp.
 #if H2P_STATIC_JSC
 static bool currentThreadCleanForBundledJSC()
 {

@@ -178,6 +178,14 @@ jobs:
             if [ "$ID" = "-" ]; then codesign --force --deep --sign - --timestamp=none "$b"
             else codesign --force --deep --sign "$ID" --timestamp --options runtime --entitlements "$RUNNER_TEMP/ent.plist" "$b"; fi
             codesign --verify --deep --strict --verbose=2 "$b"; lipo -info "$b/Contents/MacOS/$NAME"
+            # TLS guard gate: the bundled engine's pthread_key_init_np must bind to our WTFTLSGuard, never to libSystem
+            # (otherwise Apple's WTF and ours share one thread-exit destructor for TSD slot 92 -> memory corruption).
+            if [ -n "${H2P_JSC_DIR:-}" ]; then
+              if nm -m "$b/Contents/MacOS/$NAME" | grep "_pthread_key_init_np" | grep -q "undefined"; then
+                echo "::error::$b imports _pthread_key_init_np from libSystem — WTFTLSGuard not linked"; nm -m "$b/Contents/MacOS/$NAME" | grep "_pthread_key_init_np"; exit 1
+              fi
+              echo "TLS guard: $(nm -m "$b/Contents/MacOS/$NAME" | grep -c "_pthread_key_init_np") local definition(s) of _pthread_key_init_np in $(basename "$b")"
+            fi
           done
           if [ "${NOTARIZE:-}" = "1" ]; then
             for b in "VST3/$NAME.vst3" "AU/$NAME.component" "Standalone/$NAME.app"; do
@@ -259,7 +267,7 @@ jobs:
                   ( t=${H2P_DBG_TIMEOUT:-900}; for ((i=0;i<t;i++)); do sleep 1; kill -0 $lp 2>/dev/null || exit 0; done
                     echo "::warning::$(basename "$exe") still running after ${t}s: aborting it for a backtrace"
                     pkill -ABRT -x "$(basename "$exe")" || true; sleep 30; kill -9 $lp 2>/dev/null ) & local wp=$!
-                  local rc=0; wait $lp || rc=$?; kill $wp 2>/dev/null; wait $wp 2>/dev/null; return $rc; }
+                  local rc=0; wait $lp || rc=$?; kill $wp 2>/dev/null || true; wait $wp 2>/dev/null || true; return $rc; }
           H2P_DBG_TIMEOUT=600 dbg "$(xcrun -f auval 2>/dev/null || command -v auval)" -v aufx "$CODE" "$MANU" 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/auval.txt"
           grep -q "AU VALIDATION SUCCEEDED" "$GITHUB_WORKSPACE/testlogs/auval.txt"
       - name: pluginval strictness 10 (VST3 + AU)
@@ -274,7 +282,7 @@ jobs:
                   ( t=${H2P_DBG_TIMEOUT:-900}; for ((i=0;i<t;i++)); do sleep 1; kill -0 $lp 2>/dev/null || exit 0; done
                     echo "::warning::$(basename "$exe") still running after ${t}s: aborting it for a backtrace"
                     pkill -ABRT -x "$(basename "$exe")" || true; sleep 30; kill -9 $lp 2>/dev/null ) & local wp=$!
-                  local rc=0; wait $lp || rc=$?; kill $wp 2>/dev/null; wait $wp 2>/dev/null; return $rc; }
+                  local rc=0; wait $lp || rc=$?; kill $wp 2>/dev/null || true; wait $wp 2>/dev/null || true; return $rc; }
           PV=./pluginval.app/Contents/MacOS/pluginval
           H2P_DBG_TIMEOUT=1500 dbg "$PV" --strictness-level 10 --timeout-ms 900000 --validate-in-process --output-dir testlogs "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" 2>&1 | tee testlogs/pluginval-vst3.txt
           grep -q "^SUCCESS" testlogs/pluginval-vst3.txt
@@ -292,7 +300,7 @@ jobs:
                   ( t=${H2P_DBG_TIMEOUT:-900}; for ((i=0;i<t;i++)); do sleep 1; kill -0 $lp 2>/dev/null || exit 0; done
                     echo "::warning::$(basename "$exe") still running after ${t}s: aborting it for a backtrace"
                     pkill -ABRT -x "$(basename "$exe")" || true; sleep 30; kill -9 $lp 2>/dev/null ) & local wp=$!
-                  local rc=0; wait $lp || rc=$?; kill $wp 2>/dev/null; wait $wp 2>/dev/null; return $rc; }
+                  local rc=0; wait $lp || rc=$?; kill $wp 2>/dev/null || true; wait $wp 2>/dev/null || true; return $rc; }
           H2P_SHOT="$GITHUB_WORKSPACE/testlogs/$NAME-editor-screenshot.png" H2P_DBG_TIMEOUT=1500 dbg "$HT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" --editor --golden golden.json 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt"
           grep -q "ALL PASSED (0 failures)" "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt"
           echo "--- AU through the same host test ---"
