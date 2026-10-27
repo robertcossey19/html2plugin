@@ -253,8 +253,14 @@ jobs:
           killall -9 AudioComponentRegistrar 2>/dev/null || true; sleep 2
           mkdir -p "$GITHUB_WORKSPACE/testlogs"
           # auval under lldb like every other test host: a crash inside the plugin prints a backtrace instead of a silent exit
-          dbg() { perl -e 'alarm shift; exec @ARGV' 1700 xcrun lldb --batch -o run -k "thread backtrace all" -k "quit 1" -- "$@"; }
-          dbg "$(xcrun -f auval 2>/dev/null || command -v auval)" -v aufx "$CODE" "$MANU" 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/auval.txt"
+          # lldb batch run. A hang is aborted from outside (SIGABRT to the inferior, not to lldb) after H2P_DBG_TIMEOUT s, so the
+          # -k backtrace of every thread still lands in the log instead of a bare "Alarm clock" (build-36 auval hang).
+          dbg() { local exe="$1"; xcrun lldb --batch -o run -k "thread backtrace all" -k "quit 1" -- "$@" & local lp=$!
+                  ( t=${H2P_DBG_TIMEOUT:-900}; for ((i=0;i<t;i++)); do sleep 1; kill -0 $lp 2>/dev/null || exit 0; done
+                    echo "::warning::$(basename "$exe") still running after ${t}s: aborting it for a backtrace"
+                    pkill -ABRT -x "$(basename "$exe")" || true; sleep 30; kill -9 $lp 2>/dev/null ) & local wp=$!
+                  local rc=0; wait $lp || rc=$?; kill $wp 2>/dev/null; wait $wp 2>/dev/null; return $rc; }
+          H2P_DBG_TIMEOUT=600 dbg "$(xcrun -f auval 2>/dev/null || command -v auval)" -v aufx "$CODE" "$MANU" 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/auval.txt"
           grep -q "AU VALIDATION SUCCEEDED" "$GITHUB_WORKSPACE/testlogs/auval.txt"
       - name: pluginval strictness 10 (VST3 + AU)
         env: { NAME: "${{ steps.id.outputs.name }}" }
@@ -262,11 +268,17 @@ jobs:
           curl -sL -o pv.zip https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip && unzip -q pv.zip
           # Every test host runs under lldb: a crash inside the plugin prints a full backtrace into the log instead of a bare "exit code 1"
           # (the runners keep no DiagnosticReports). Pass/fail is read from the host's own verdict line, not lldb's exit status.
-          dbg() { perl -e 'alarm shift; exec @ARGV' 1700 xcrun lldb --batch -o run -k "thread backtrace all" -k "quit 1" -- "$@"; }
+          # lldb batch run. A hang is aborted from outside (SIGABRT to the inferior, not to lldb) after H2P_DBG_TIMEOUT s, so the
+          # -k backtrace of every thread still lands in the log instead of a bare "Alarm clock" (build-36 auval hang).
+          dbg() { local exe="$1"; xcrun lldb --batch -o run -k "thread backtrace all" -k "quit 1" -- "$@" & local lp=$!
+                  ( t=${H2P_DBG_TIMEOUT:-900}; for ((i=0;i<t;i++)); do sleep 1; kill -0 $lp 2>/dev/null || exit 0; done
+                    echo "::warning::$(basename "$exe") still running after ${t}s: aborting it for a backtrace"
+                    pkill -ABRT -x "$(basename "$exe")" || true; sleep 30; kill -9 $lp 2>/dev/null ) & local wp=$!
+                  local rc=0; wait $lp || rc=$?; kill $wp 2>/dev/null; wait $wp 2>/dev/null; return $rc; }
           PV=./pluginval.app/Contents/MacOS/pluginval
-          dbg "$PV" --strictness-level 10 --timeout-ms 900000 --validate-in-process --output-dir testlogs "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" 2>&1 | tee testlogs/pluginval-vst3.txt
+          H2P_DBG_TIMEOUT=1500 dbg "$PV" --strictness-level 10 --timeout-ms 900000 --validate-in-process --output-dir testlogs "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" 2>&1 | tee testlogs/pluginval-vst3.txt
           grep -q "^SUCCESS" testlogs/pluginval-vst3.txt
-          dbg "$PV" --strictness-level 10 --timeout-ms 900000 --validate-in-process --output-dir testlogs "/Library/Audio/Plug-Ins/Components/$NAME.component" 2>&1 | tee testlogs/pluginval-au.txt
+          H2P_DBG_TIMEOUT=1500 dbg "$PV" --strictness-level 10 --timeout-ms 900000 --validate-in-process --output-dir testlogs "/Library/Audio/Plug-Ins/Components/$NAME.component" 2>&1 | tee testlogs/pluginval-au.txt
           grep -q "^SUCCESS" testlogs/pluginval-au.txt
       - name: HostTest (params, state, golden master vs Node, editor) + CPU with/without JSC JIT
         env: { NAME: "${{ steps.id.outputs.name }}", TARGET: "${{ steps.id.outputs.target }}", H2P_DEBUG: "1" }
@@ -274,14 +286,20 @@ jobs:
           set -o pipefail
           cd plugins/${{ matrix.slug }}
           HT="build/${TARGET}HostTest_artefacts/Release/${TARGET}HostTest"
-          dbg() { perl -e 'alarm shift; exec @ARGV' 1700 xcrun lldb --batch -o run -k "thread backtrace all" -k "quit 1" -- "$@"; }
-          H2P_SHOT="$GITHUB_WORKSPACE/testlogs/$NAME-editor-screenshot.png" dbg "$HT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" --editor --golden golden.json 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt"
+          # lldb batch run. A hang is aborted from outside (SIGABRT to the inferior, not to lldb) after H2P_DBG_TIMEOUT s, so the
+          # -k backtrace of every thread still lands in the log instead of a bare "Alarm clock" (build-36 auval hang).
+          dbg() { local exe="$1"; xcrun lldb --batch -o run -k "thread backtrace all" -k "quit 1" -- "$@" & local lp=$!
+                  ( t=${H2P_DBG_TIMEOUT:-900}; for ((i=0;i<t;i++)); do sleep 1; kill -0 $lp 2>/dev/null || exit 0; done
+                    echo "::warning::$(basename "$exe") still running after ${t}s: aborting it for a backtrace"
+                    pkill -ABRT -x "$(basename "$exe")" || true; sleep 30; kill -9 $lp 2>/dev/null ) & local wp=$!
+                  local rc=0; wait $lp || rc=$?; kill $wp 2>/dev/null; wait $wp 2>/dev/null; return $rc; }
+          H2P_SHOT="$GITHUB_WORKSPACE/testlogs/$NAME-editor-screenshot.png" H2P_DBG_TIMEOUT=1500 dbg "$HT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" --editor --golden golden.json 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt"
           grep -q "ALL PASSED (0 failures)" "$GITHUB_WORKSPACE/testlogs/hosttest-vst3.txt"
           echo "--- AU through the same host test ---"
-          dbg "$HT" "/Library/Audio/Plug-Ins/Components/$NAME.component" --golden golden.json 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/hosttest-au.txt"
+          H2P_DBG_TIMEOUT=1500 dbg "$HT" "/Library/Audio/Plug-Ins/Components/$NAME.component" --golden golden.json 2>&1 | tee "$GITHUB_WORKSPACE/testlogs/hosttest-au.txt"
           grep -q "ALL PASSED (0 failures)" "$GITHUB_WORKSPACE/testlogs/hosttest-au.txt"
           echo "--- CPU with JavaScriptCore JIT disabled (worst case: hosts without the JIT entitlement) ---"
-          JSC_useJIT=false dbg "$HT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" > "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt" 2>&1 || true
+          JSC_useJIT=false H2P_DBG_TIMEOUT=1500 dbg "$HT" "/Library/Audio/Plug-Ins/VST3/$NAME.vst3" > "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt" 2>&1 || true
           grep -q "ALL PASSED (0 failures)" "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt" || { cat "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt"; exit 1; }
           grep -E "render cost|FAIL|\[h2p" "$GITHUB_WORKSPACE/testlogs/hosttest-nojit.txt" || true
           cp ~/Library/Logs/html2plugin/*.log "$GITHUB_WORKSPACE/testlogs/" 2>/dev/null || true

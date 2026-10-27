@@ -135,7 +135,7 @@ static bool currentThreadCleanForBundledJSC()
 
 struct JSHost::Worker
 {
-    std::thread th;
+    pthread_t th {}; bool haveThread = false;
     CFRunLoopRef rl = nullptr;
     CFRunLoopSourceRef src = nullptr;
     std::mutex m; std::condition_variable cv;
@@ -144,17 +144,22 @@ struct JSHost::Worker
 
     Worker()
     {
-        th = std::thread ([this] { loop(); });
+        pthread_attr_t attr; pthread_attr_init (&attr);
+        pthread_attr_setstacksize (&attr, 8u << 20);   // same 8 MB a main thread gets: deep worklet init code / JSC parser recursion must not hit a 512 KB std::thread stack
+        haveThread = pthread_create (&th, &attr, [] (void* p) -> void* { static_cast<Worker*> (p)->loop(); return nullptr; }, this) == 0;
+        pthread_attr_destroy (&attr);
+        if (! haveThread) return;
         std::unique_lock<std::mutex> lk (m); cv.wait (lk, [this] { return started; });
     }
     ~Worker()
     {
         { std::lock_guard<std::mutex> lk (m); stopping = true; }
         if (rl != nullptr) CFRunLoopStop (rl);
-        if (th.joinable()) th.join();
+        if (haveThread) pthread_join (th, nullptr);
         if (src != nullptr) CFRelease (src);
         if (rl != nullptr) CFRelease (rl);
     }
+    bool onWorkerThread() const { return haveThread && pthread_equal (pthread_self(), th) != 0; }
     static void perform (void* info) { static_cast<Worker*> (info)->drain(); }
     void drain()
     {
@@ -193,8 +198,9 @@ struct JSHost::Worker
 bool JSHost::threadClean() { return currentThreadCleanForBundledJSC(); }
 void JSHost::runOnWorker (const std::function<void()>& f)
 {
-    if (worker != nullptr && std::this_thread::get_id() == worker->th.get_id()) { f(); return; }
+    if (worker != nullptr && worker->onWorkerThread()) { f(); return; }
     if (worker == nullptr) worker.reset (new Worker());
+    if (! worker->haveThread) { f(); return; }   // could not create the thread (should not happen): run inline rather than silence the plugin
     worker->runSync (f);
 }
 #else
