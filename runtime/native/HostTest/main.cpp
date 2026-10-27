@@ -34,7 +34,7 @@ struct Host
     juce::AudioProcessorParameter* byId (const juce::String& id, const juce::String& name = {})
     {
         for (auto* p : plug->getParameters()) if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p)) if (r->paramID == id) return p;
-        for (auto* p : plug->getParameters()) if (p->getParameterID() == id) return p;
+        for (auto* p : plug->getParameters()) if (auto* hp = dynamic_cast<juce::HostedAudioProcessorParameter*> (p)) if (hp->getParameterID() == id) return p;
         if (name.isNotEmpty()) for (auto* p : plug->getParameters()) if (p->getName (64) == name) return p;
         return nullptr;
     }
