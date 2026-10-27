@@ -6,6 +6,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <cstring>
 #include <juce_audio_utils/juce_audio_utils.h>
+extern "C" int h2p_snapshotWebView (void* nsViewOfWindowContent, const char* pngPath);
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "BinaryData.h"
 #include <cmath>
@@ -216,11 +217,10 @@ int main (int argc, char** argv)
             win.setContentNonOwned (ed.get(), true); win.setVisible (true); win.toFront (true);
             for (int i = 0; i < 16; i++) { juce::MessageManager::getInstance()->runDispatchLoopUntil (500); h.run (1000, -20, 0.1); }
             if (const char* shot = getenv ("H2P_SHOT"))
-            {   // proof the web UI (incl. its CSS/SVG animations) renders inside the plugin window: capture the editor's screen region
-                const auto b = win.getScreenBounds();
-                const juce::String cmd = "screencapture -x -R" + juce::String (b.getX()) + "," + juce::String (b.getY()) + "," + juce::String (b.getWidth()) + "," + juce::String (b.getHeight()) + " \"" + juce::String (shot) + "\"";
-                const int rc = system (cmd.toRawUTF8());
-                printf ("     editor screenshot (%dx%d at %d,%d): %s -> %s\n", b.getWidth(), b.getHeight(), b.getX(), b.getY(), shot, rc == 0 && juce::File (shot).existsAsFile() ? "written" : "not captured (no window server?)");
+            {   // proof the web UI (incl. its CSS/SVG animations) renders inside the plugin window: WebKit renders the snapshot itself
+                int rc = -2;
+                if (auto* peer = win.getPeer()) rc = h2p_snapshotWebView (peer->getNativeHandle(), shot);
+                printf ("     editor snapshot (%dx%d): %s -> %s\n", ed->getWidth(), ed->getHeight(), shot, rc == 1 ? "written by WebKit" : rc == 0 ? "no WKWebView found" : rc == -1 ? "snapshot failed" : "no native window");
             }
             printf ("     editor after the page rendered: %dx%d (the page's natural layout, fitted to this screen)\n", ed->getWidth(), ed->getHeight());
             auto y = tail (h.run (1000, -20, 0.5), 16384);
