@@ -74,12 +74,23 @@
         case 'drag': {
           const cur = current[name]; if (typeof cur !== 'number' || !b.unitsPerPixelUp) return false;
           if (Math.abs(value - cur) <= Math.abs(b.wheelStep || b.unitsPerPixelUp) * 1e-3) return true;   // already there: no synthetic gesture (a gesture makes the page re-post its params)
-          const r = el.getBoundingClientRect(); const x = r.left + r.width / 2, y0 = r.top + r.height / 2; const dy = (value - cur) / b.unitsPerPixelUp;
+          const r = el.getBoundingClientRect(); const x = r.left + r.width / 2, y0 = r.top + r.height / 2;
+          if (typeof b.min === 'number' && typeof b.max === 'number') value = Math.min(b.max, Math.max(b.min, value));
+          // px for a value: the forge-measured response curve (dB knobs post linear gain etc.), else the linear slope
+          const f = b.curveLog ? Math.log : (x => x);
+          const pxOf = v => { const c = b.curve; if (!c || c.length < 2) return v / b.unitsPerPixelUp; const inc = c[c.length - 1][1] >= c[0][1]; let i = 0; while (i < c.length - 2 && (inc ? c[i + 1][1] < v : c[i + 1][1] > v)) i++; const [p0, v0] = c[i], [p1, v1] = c[i + 1]; return v1 === v0 ? p0 : p0 + (f(v) - f(v0)) * (p1 - p0) / (f(v1) - f(v0)); };
           const mouse = b.events === 'mouse'; const ev = t => mouse ? t.replace('pointer', 'mouse') : t;
           const common = Object.assign({ clientX: x, screenX: x }, mouse ? {} : { pointerId: SYN_ID, pointerType: 'mouse', isPrimary: true });
-          fire(el, ev('pointerdown'), Object.assign({ clientY: y0, screenY: y0, button: 0, buttons: 1 }, common));
-          for (const f of [0.5, 1, 1]) fire(el, ev('pointermove'), Object.assign({ clientY: y0 - dy * f, screenY: y0 - dy * f, buttons: 1 }, common)); // several moves: some pages apply linked/partner state one event late
-          fire(el, ev('pointerup'), Object.assign({ clientY: y0 - dy, screenY: y0 - dy, button: 0, buttons: 0 }, common));
+          const gesture = dy => {
+            fire(el, ev('pointerdown'), Object.assign({ clientY: y0, screenY: y0, button: 0, buttons: 1 }, common));
+            for (const f of [0.5, 1, 1]) fire(el, ev('pointermove'), Object.assign({ clientY: y0 - dy * f, screenY: y0 - dy * f, buttons: 1 }, common)); // several moves: some pages apply linked/partner state one event late
+            fire(el, ev('pointerup'), Object.assign({ clientY: y0 - dy, screenY: y0 - dy, button: 0, buttons: 0 }, common));
+          };
+          gesture(pxOf(value) - pxOf(cur));
+          // the page may round or clamp per gesture: correct with the local slope, twice at most
+          const tol = Math.abs(value) * 1e-3 + 1e-9;
+          // (now === prev: the page reports asynchronously; never stack a second gesture on a stale reading)
+          for (let k = 0, prev = cur; k < 4; k++) { const now = current[name]; if (typeof now !== 'number' || now === prev || Math.abs(now - value) <= tol) break; prev = now; const d = pxOf(value) - pxOf(now); if (!isFinite(d) || Math.abs(d) < 0.01) break; gesture(d); }
           // fine trim with the wheel if the page exposes a finer step than one pixel gives us
           if (b.wheelStep) { const after = current[name]; if (typeof after === 'number') { const t = Math.round((value - after) / b.wheelStep); const dir = t < 0 ? 100 : -100; for (let i = 0; i < Math.min(Math.abs(t), 50); i++) fire(el, 'wheel', { deltaY: dir, deltaMode: 0 }); } }
           return true;

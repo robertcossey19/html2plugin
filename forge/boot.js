@@ -239,11 +239,31 @@ async function bootPage(html, opts = {}) {
       await diffAfter(() => pd(4000)); let hi = paramsNow()[kp]; await diffAfter(() => pd(-8000)); let lo = paramsNow()[kp];
       if (typeof lo === 'number' && typeof hi === 'number' && lo > hi) { const t = lo; lo = hi; hi = t; }
       const span = Math.abs(hi - lo), bounded = typeof lo === 'number' && typeof hi === 'number' && isFinite(span) && span < 0.6 * 12000 * Math.abs(perPx); // a page without clamps would have travelled the full 12000 px
-      const b = { selector: sel, kind: 'drag', events: dragEvents, unitsPerPixelUp: perPx, min: bounded ? lo : (bindings[kp] && bindings[kp].min), max: bounded ? hi : (bindings[kp] && bindings[kp].max), wheelStep: bindings[kp] && bindings[kp].step, quality: bounded ? 9 : 8 }; consider(kp, b);
-      probeLog.push(`${sel} (${hint}): ${dragEvents}-drag -> ${kp} ${perPx}/px${bounded ? ` clamps [${lo}, ${hi}]` : ''}`);
+      // response curve: knobs are rarely linear in the posted unit (dB knobs post linear gain, log frequency knobs post Hz).
+      // From the end stop we are at now, walk the whole travel in 20 px steps and record (px, value); the plugin inverts it.
+      let curve = null;
+      if (bounded) {
+        curve = []; let cum = 0, cur = paramsNow()[kp], flat = 0; curve.push([0, cur]);
+        for (let i = 0; i < 400 && flat < 3; i++) { await diffAfter(() => pd(10)); cum += 10; const v = paramsNow()[kp]; if (typeof v !== 'number') break; if (v === cur) flat++; else flat = 0; cur = v; curve.push([cum, v]); }
+        while (curve.length > 1 && curve[curve.length - 1][1] === curve[curve.length - 2][1]) curve.pop();
+        if (curve.length < 3) curve = null;
+      }
+      // interpolation domain: a dB/log knob has (nearly) constant ratios between steps, a linear one constant differences
+      let curveLog = false;
+      if (curve && curve.every(([, v]) => v > 0)) {
+        const cv = xs => { const m = xs.reduce((a, b) => a + b, 0) / xs.length; return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length) / (Math.abs(m) || 1); };
+        const dl = [], dg = []; for (let i = 1; i < curve.length; i++) { dl.push(curve[i][1] - curve[i - 1][1]); dg.push(Math.log(curve[i][1]) - Math.log(curve[i - 1][1])); }
+        curveLog = cv(dg) < cv(dl);
+      }
+      const b = { selector: sel, kind: 'drag', events: dragEvents, unitsPerPixelUp: perPx, min: bounded ? lo : (bindings[kp] && bindings[kp].min), max: bounded ? hi : (bindings[kp] && bindings[kp].max), wheelStep: bindings[kp] && bindings[kp].step, curve, curveLog, quality: bounded ? 9 : 8 }; consider(kp, b);
+      probeLog.push(`${sel} (${hint}): ${dragEvents}-drag -> ${kp} ${perPx}/px${bounded ? ` clamps [${lo}, ${hi}]` : ''}${curve ? `, curve ${curve.length} points over ${curve[curve.length - 1][0]} px (${curveLog ? 'log' : 'linear'} interpolation)` : ''}`);
       // restore towards boot value (we are at the low end now if bounded, else 20 px below where we started)
       const target = lastParams[kp];
-      if (bounded && typeof target === 'number' && perPx) { const cur = paramsNow()[kp]; pd((target - cur) / perPx); } else pd(-20 + 4000 - 8000 > 0 ? 0 : 4000); 
+      if (bounded && typeof target === 'number' && perPx) {
+        const cur = paramsNow()[kp];
+        if (curve) { const f = curveLog ? Math.log : (x => x); const pxOf = v => { const c = curve, inc = c[c.length - 1][1] >= c[0][1]; let i = 0; while (i < c.length - 2 && (inc ? c[i + 1][1] < v : c[i + 1][1] > v)) i++; const [p0, v0] = c[i], [p1, v1] = c[i + 1]; return v1 === v0 ? p0 : p0 + (f(v) - f(v0)) * (p1 - p0) / (f(v1) - f(v0)); }; pd(pxOf(target) - pxOf(cur)); }
+        else pd((target - cur) / perPx);
+      } else pd(-20 + 4000 - 8000 > 0 ? 0 : 4000); 
       await sleep(20); flush();
     }
     if (kw || kp) continue;
