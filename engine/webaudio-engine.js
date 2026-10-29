@@ -512,7 +512,11 @@
         if (t) {
           const copy = JSON.parse(JSON.stringify(t.msg)); let o = copy; for (let i = 0; i < t.path.length - 1; i++) o = o[t.path[i]];
           const leaf = t.path[t.path.length - 1]; o[leaf] = typeof o[leaf] === 'boolean' ? !!value : value;
-          n.port.postMessage(reviveMessage(copy)); this.lastPost[id] = copy; how = 'message'; continue;
+          n.port.postMessage(reviveMessage(copy)); this.lastPost[id] = copy; how = 'message';
+          // the copy is now the newest message that carried every key of t.msg: re-point those templates at it, or the next
+          // replay of a sibling key (a full-state message like SLAM's {set:{input:[L,R], output:[..], ...}}) would resend this key's old value
+          const T = this.templates[id]; for (const k in T) if (T[k].msg === t.msg) T[k] = { msg: copy, path: T[k].path };
+          continue;
         }
         const last = this.lastPost && this.lastPost[id];
         if (last) {

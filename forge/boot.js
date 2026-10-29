@@ -425,6 +425,16 @@ async function bootPage(html, opts = {}) {
       }
     }
   }
+  // Macro sliders (SLAM's Simple tab: Slam = INPUT L+R, Hot = OUTPUT L+R, ...) are conveniences the page derives from parameters
+  // that have their own controls. Exposing both the macro and its targets to the host creates a cycle (host applies the macro,
+  // the page resets the targets; the page syncs the macro from a target, the host pushes the macro back ...): build 42 SLAM lost
+  // input_L = -6 to the Slam slider within a second. A macro whose every driven key is bound by another control is not a host
+  // parameter; it keeps working inside the editor through the page's own code, and its targets reach the host one by one.
+  for (const name of Object.keys(bindings)) {
+    const b = bindings[name]; if (b.kind !== 'range-ui' || !b.drives || !b.drives.length) continue;
+    const boundElsewhere = k => Object.keys(bindings).some(o => o !== name && !bindings[o].uiParam && (o === k || (bindings[o].drives || []).includes(k)));
+    if (b.drives.every(boundElsewhere)) { delete bindings[name]; probeLog.push(`${b.selector}: macro over ${b.drives.join(', ')} - each already has its own control; left to the page (not a host parameter)`); }
+  }
   // put the page back to its boot state as far as the probes changed it (DSP-side: we never ship this DOM, so it only matters for consistency of lastParams)
   const uiSize = { width: Math.max(d.documentElement.scrollWidth || 0, 900), height: Math.max(d.documentElement.scrollHeight || 0, 600) };
   const title = (d.title || '').trim();
