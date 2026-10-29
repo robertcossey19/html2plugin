@@ -310,8 +310,26 @@ JSObjectRef JSHost::getFunction (JSObjectRef obj, const char* name)
     return f;
 }
 
+#if H2P_STATIC_JSC
+// Bun's JavaScriptCore fork removed the JSLockHolder from every entry point in API/JSTypedArray.cpp (upstream WebKit
+// takes it in all of them; at autobuild-0b6b831a the file has zero lock holders). Unlocked, the calling thread's
+// atom-string table is never swapped to the VM's and the thread is not registered with the GC, so when the typed-array
+// allocation is the one that crosses the GC threshold, Heap::collect() hits
+//   RELEASE_ASSERT(vm().atomStringTable() == Thread::currentSingleton().atomStringTable())   (Heap.cpp:1912)
+// -- the intermittent "atom table" abort seen in auval/pluginval (fairchild build 38, SLAM build 41 AU pluginval,
+// and the context re-creation path before that). Every other C API we call is locked, so we take the lock ourselves
+// around these calls. JSLockHolder(JSGlobalObject*) is an out-of-line symbol in the static archive and a
+// JSContextRef *is* the JSGlobalObject* (APICast.h), so no JSC internal headers or object layouts are involved; the
+// class body below only has to match in size (one RefPtr<VM>).
+namespace JSC { class JSGlobalObject; class JSLockHolder { public: JSLockHolder (JSGlobalObject*); ~JSLockHolder(); private: void* m_vm; }; }
+struct H2PApiLock { JSC::JSLockHolder h; explicit H2PApiLock (JSContextRef c) : h (reinterpret_cast<JSC::JSGlobalObject*> (const_cast<OpaqueJSContext*> (c))) {} };
+#else
+struct H2PApiLock { explicit H2PApiLock (JSContextRef) {} };   // Apple's JavaScriptCore.framework locks inside the typed-array API itself
+#endif
+
 JSObjectRef JSHost::makeFloat32Array (std::vector<float>& storage)
 {
+    H2PApiLock lock (ctx);
     JSValueRef exc = nullptr;
     JSObjectRef ta = JSObjectMakeTypedArrayWithBytesNoCopy (ctx, kJSTypedArrayTypeFloat32Array, storage.data(),
                                                              storage.size() * sizeof (float), nullptr, nullptr, &exc);
