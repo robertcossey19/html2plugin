@@ -8,6 +8,44 @@ const SHIM = fs.readFileSync(path.join(__dirname, '..', 'runtime', 'webaudio-shi
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const START_RX = /^(power|start|on|run|init|enable|engage|activate|go|begin|arm|audio|mic|input|connect|boot|play|bypass)\b|power|start|engage|enable/i;
 
+/* Pages built as file players (Load -> decode -> build graph -> Play) never touch Web Audio until a file arrives. Inside the
+ * plugin the DAW track is that file, so the boot hands them one: a short 16-bit stereo WAV (1 kHz, -20 dBFS). The same bytes
+ * are produced by runtime/ui-bridge.js inside the WebView; keep the two in sync. */
+function syntheticWavBytes(sampleRate) {
+  const sr = sampleRate || 48000, frames = Math.round(sr * 0.5), ch = 2, bps = 2;
+  const ab = new ArrayBuffer(44 + frames * ch * bps), dv = new DataView(ab);
+  const str = (o, t) => { for (let i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + frames * ch * bps, true); str(8, 'WAVE'); str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, ch, true);
+  dv.setUint32(24, sr, true); dv.setUint32(28, sr * ch * bps, true); dv.setUint16(32, ch * bps, true); dv.setUint16(34, 16, true); str(36, 'data'); dv.setUint32(40, frames * ch * bps, true);
+  for (let i = 0; i < frames; i++) { const v = Math.round(Math.sin(2 * Math.PI * 1000 * i / sr) * 0.1 * 32767); dv.setInt16(44 + i * 4, v, true); dv.setInt16(46 + i * 4, v, true); }
+  return ab;
+}
+/* Hand the synthetic file to the page the way a user would: every <input type=file> gets it via a change event, then a drop
+ * event (bubbling, so any drop zone up the tree sees it) on each element with an id. Returns a replayable description or null. */
+async function feedFile(w, d, sampleRate, graphBuilt, flush, timeoutMs) {
+  const ab = syntheticWavBytes(sampleRate);
+  const file = new w.File([new w.Uint8Array(ab)], 'h2p-input.wav', { type: 'audio/wav' }); file.__arrayBuffer = ab;
+  try { file.arrayBuffer = () => Promise.resolve(ab.slice(0)); } catch (e) { }
+  const list = { 0: file, length: 1, item: i => (i === 0 ? file : null), [Symbol.iterator]: function* () { yield file; } };
+  const waitBuilt = async (ms) => { const dl = Date.now() + ms; while (Date.now() < dl && !graphBuilt()) { await sleep(100); flush(); } return graphBuilt(); };
+  const inputs = [...d.querySelectorAll('input[type=file]')];
+  for (const inp of inputs) {
+    try { Object.defineProperty(inp, 'files', { configurable: true, get: () => list }); } catch (e) { continue; }
+    inp.dispatchEvent(new w.Event('input', { bubbles: true })); inp.dispatchEvent(new w.Event('change', { bubbles: true })); flush();
+    if (await waitBuilt(timeoutMs)) return { kind: 'file', selector: inp.id ? '#' + inp.id : `input[type=file]:nth-of-type(${inputs.indexOf(inp) + 1})`, name: file.name, text: 'file input ' + (inp.id || '') };
+  }
+  const dt = { files: list, items: [{ kind: 'file', type: 'audio/wav', getAsFile: () => file }], types: ['Files'], dropEffect: 'copy', effectAllowed: 'all', getData: () => '', setData() { } };
+  const targets = [...d.querySelectorAll('[id]')].slice(0, 80);
+  for (const el of targets) {
+    for (const type of ['dragenter', 'dragover', 'drop']) { const ev = new w.Event(type, { bubbles: true, cancelable: true }); try { Object.defineProperty(ev, 'dataTransfer', { value: dt }); } catch (e) { } el.dispatchEvent(ev); }
+    flush();
+    if (await waitBuilt(Math.min(timeoutMs, 1200))) return { kind: 'drop', selector: '#' + el.id, name: file.name, text: 'file dropped on #' + el.id };
+  }
+  return null;
+}
+
+/* Name of the host parameter for slot i of a numeric array value; 2-slot arrays are stereo pairs (L/R). Mirrored in the engine. */
+const arraySlotName = (k, i, len) => len === 2 ? k + (i === 0 ? '_L' : '_R') : k + '_' + (i + 1);
 function flattenParams(data, into) {
   // numeric/boolean leaves of a message, keyed by leaf name; also {name|key|id|param, value|val|v} shapes
   into = into || {};
@@ -15,7 +53,14 @@ function flattenParams(data, into) {
   const kf = ['name', 'key', 'id', 'param', 'parameter'].find(k => typeof data[k] === 'string');
   const vf = ['value', 'val', 'v'].find(k => typeof data[k] === 'number' || typeof data[k] === 'boolean');
   if (kf && vf) { into[data[kf]] = +data[vf]; return into; }
-  for (const k in data) { const v = data[k]; if (k === 'type') continue; if (typeof v === 'number' || typeof v === 'boolean') into[k] = +v; else if (v && typeof v === 'object' && !Array.isArray(v)) flattenParams(v, into); }
+  for (const k in data) {
+    const v = data[k]; if (k === 'type') continue;
+    if (typeof v === 'number' || typeof v === 'boolean') into[k] = +v;
+    else if (Array.isArray(v)) { // short numeric arrays are per-channel values ({input:[L,R]}): one parameter per slot
+      if (v.length >= 1 && v.length <= 8 && v.every(x => typeof x === 'number' || typeof x === 'boolean')) v.forEach((x, i) => { into[arraySlotName(k, i, v.length)] = +x; });
+    }
+    else if (v && typeof v === 'object') flattenParams(v, into);
+  }
   return into;
 }
 
@@ -30,11 +75,18 @@ async function bootPage(html, opts = {}) {
   const graphBuilt = () => ops.some(o => o.op === 'create' && o.type === 'AudioWorklet') || ops.some(o => o.op === 'connect');
   async function freshPage() {
   // (previous probe pages are left to the GC: closing them while their MutationObservers still have records makes jsdom throw out of the microtask queue)
+  if (w) { // retire the previous page: stop its timers and its op stream so a dozen probe pages cannot starve the live one
+    w.__h2p_dead = true; for (const id of (w.__h2p_timers || [])) { try { w.clearTimeout(id); } catch (e) { } } for (const id of (w.__h2p_intervals || [])) { try { w.clearInterval(id); } catch (e) { } } w.__h2p_timers = []; w.__h2p_intervals = [];
+    try { w.document.dispatchEvent(new w.Event('visibilitychange')); } catch (e) { }
+  }
   ops = []; recv = null; blobs = {}; bn = 0; addModuleUrls = [];
   dom = new JSDOM(html, {
     runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc, url: 'https://plugin.local/index.html',
     beforeParse(w) {
-      w.__h2p_init = { sampleRate }; w.__h2p_transport = { send: o => ops.push(...o), onReceive: f => { recv = f; } };
+      w.__h2p_init = { sampleRate }; w.__h2p_transport = { send: o => { if (!w.__h2p_dead) ops.push(...o); }, onReceive: f => { if (!w.__h2p_dead) recv = f; } };
+      w.__h2p_timers = []; const st = w.setTimeout.bind(w), si = w.setInterval.bind(w);
+      w.setTimeout = function (f, ms, ...a) { if (w.__h2p_dead) return 0; const id = st(f, ms, ...a); w.__h2p_timers.push(id); if (w.__h2p_timers.length > 4000) w.__h2p_timers.splice(0, 2000); return id; };
+      w.__h2p_intervals = []; w.setInterval = function (f, ms, ...a) { if (w.__h2p_dead) return 0; const id = si(f, ms, ...a); w.__h2p_intervals.push(id); return id; };
       const RealBlob = w.Blob; w.Blob = class extends RealBlob { constructor(parts, o) { super(parts, o); this.__text = (parts || []).map(p => typeof p === 'string' ? p : (p && p.__text) || '').join(''); } };
       w.URL.createObjectURL = b => { const u = 'blob:h2p/' + (++bn); blobs[u] = (b && b.__text) || ''; return u; }; w.URL.revokeObjectURL = () => { };
       const noop = new Proxy(function () { }, { get: (t, k) => k === 'canvas' ? {} : noop, apply: () => noop, set: () => true });
@@ -57,7 +109,8 @@ async function bootPage(html, opts = {}) {
   w.addEventListener('error', e => errors.push(String(e.message || e.error)));
   await sleep(250); flush();
   if (startControl && startControl.selector && !graphBuilt()) { // replay the start control found on the first boot
-    const el = d.querySelector(startControl.selector); if (el) for (let i = 0; i < (startControl.clicks || 1); i++) { clickEl(el); await sleep(300); flush(); }
+    if (startControl.kind === 'file' || startControl.kind === 'drop') await feedFile(w, d, sampleRate, graphBuilt, flush, timeoutMs);
+    else { const el = d.querySelector(startControl.selector); if (el) for (let i = 0; i < (startControl.clicks || 1); i++) { clickEl(el); await sleep(300); flush(); } }
     const deadline = Date.now() + timeoutMs; while (Date.now() < deadline && !graphBuilt()) { await sleep(100); flush(); } await sleep(300); flush();
   }
   reboots++;
@@ -92,6 +145,12 @@ async function bootPage(html, opts = {}) {
       }
       startControl = { id: el.id || null, text: (el.textContent || '').trim().slice(0, 40), selector: el.id ? '#' + el.id : null, clicks }; break;
     }
+    // Still nothing: a file-player page (Load/drop -> decode -> graph -> Play). Hand it a file; the DAW track takes its place in the plugin.
+    if (!graphBuilt()) {
+      const fed = await feedFile(w, d, sampleRate, graphBuilt, flush, timeoutMs);
+      if (fed) { startControl = Object.assign({ clicks: 1 }, fed); probeLog0.push(`graph is built when a file arrives (${fed.text}); the plugin feeds a synthetic WAV at boot and the DAW input replaces the file`); }
+      else probeLog0.push('no button, file input or drop zone made the page build its graph');
+    }
   }
   const deadline = Date.now() + timeoutMs; while (Date.now() < deadline && !graphBuilt()) { await sleep(100); flush(); }
   await sleep(300); flush();
@@ -121,6 +180,10 @@ async function bootPage(html, opts = {}) {
     for (const hh of [hint, hint2]) { const h = norm(hh); if (h && h.length >= 3) { const hit = ks.find(k => norm(k) === h) || ks.find(k => h.includes(norm(k)) || norm(k).includes(h)); if (hit) return hit; } }
     return ks.find(k => !bindings[k]) || ks[0];   // linked channels: the second knob of a stereo-linked pair moves both keys; take the one no control owns yet
   };
+  // A control that moves several unrelated leaves at once (a "threshold" macro that sets input and output of both channels, a
+  // lookup-table slider) cannot be replayed as one leaf. Stereo twins (x_L/x_R, inA/inB) of one base name still count as one.
+  const baseOf = k => k.replace(/(_L|_R|_\d+|[AB]|[12]|L|R|Left|Right)$/, '');
+  const isMacro = ch => { const ks = Object.keys(ch).filter(k => !structuralOnly[k]); return new Set(ks.map(baseOf)).size > 1; };
   const groupHint = el => { const p = el.parentElement; return p ? (p.id || (p.dataset && (p.dataset.param || p.dataset.name)) || '') : ''; };
   const fire = (el, type, init) => { const Ev = type.startsWith('pointer') ? w.PointerEvent || w.MouseEvent : type === 'wheel' ? w.WheelEvent : type.startsWith('mouse') ? w.MouseEvent : w.Event; el.dispatchEvent(new Ev(type, Object.assign({ bubbles: true, cancelable: true, composed: true }, init || {}))); };
   const consider = (name, b) => { if (!bindings[name] || (b.quality || 0) > (bindings[name].quality || 0)) bindings[name] = b; };
@@ -172,8 +235,22 @@ async function bootPage(html, opts = {}) {
     if (type === 'range' || type === 'number') {
       const min = parseFloat(el.min), max = parseFloat(el.max); if (!isFinite(min) || !isFinite(max)) continue; const orig = el.value;
       const r1 = await diffAfter(() => { el.value = String(min); fire(el, 'input'); fire(el, 'change'); }); const r2 = await diffAfter(() => { el.value = String(max); fire(el, 'input'); fire(el, 'change'); });
-      const k = single(r2.changed, el.id || el.name) || single(r1.changed, el.id || el.name);
-      if (k) { const pMin = r1.after ? r1.after[k] : undefined, pMax = r2.after[k]; const a = (pMax - pMin) / (max - min); consider(k, { selector: sel, kind: 'range', min, max, step: parseFloat(el.step) || 0, paramAtMin: pMin, paramAtMax: pMax, scale: a, offset: pMin - a * min, quality: 10 }); }
+      const union = Object.assign({}, r1.changed, r2.changed); const macro = isMacro(union);
+      let k = macro ? null : (single(r2.changed, el.id || el.name) || single(r1.changed, el.id || el.name));
+      let nonlinear = false;
+      if (k) { // the replay maps slider -> leaf linearly; a lookup-table slider (dB steps, tapers) is not linear: check the midpoint
+        const pMin = r1.after ? r1.after[k] : undefined, pMax = r2.after[k];
+        if (typeof pMin === 'number' && typeof pMax === 'number' && pMax !== pMin) for (const f of [0.25, 0.5, 0.75]) { // three interior points against the straight line
+          const r3 = await diffAfter(() => { el.value = String(min + (max - min) * f); fire(el, 'input'); fire(el, 'change'); }); const pv = r3.after ? r3.after[k] : undefined;
+          if (typeof pv !== 'number') continue; const lin = pMin + (pMax - pMin) * ((+el.value - min) / (max - min)); if (Math.abs(pv - lin) > 0.01 * Math.abs(pMax - pMin)) { nonlinear = true; break; }
+        }
+        if (!nonlinear) { const a = (pMax - pMin) / (max - min); consider(k, { selector: sel, kind: 'range', min, max, step: parseFloat(el.step) || 0, paramAtMin: pMin, paramAtMax: pMax, scale: a, offset: pMin - a * min, quality: 10 }); }
+      }
+      if ((macro || nonlinear) && !junkControl(el) && (r1.posts && r1.posts.length || r2.posts && r2.posts.length)) {
+        const name = uiId(el); const keys = Object.keys(union).filter(x => !structuralOnly[x]);
+        consider(name, { selector: sel, kind: 'range-ui', min, max, step: parseFloat(el.step) || 0, drives: keys, quality: 9, uiParam: { type: 'float', min, max, step: parseFloat(el.step) || 0, default: parseFloat(orig), name: labelFor(el) } });
+        probeLog.push(`${sel}: range -> ${macro ? 'moves several parameters (' + keys.join(', ') + ')' : 'non-linear mapping to ' + k}; exposed as its own control ${name} [${min}, ${max}] driven through the page`);
+      }
       el.value = orig; fire(el, 'input'); fire(el, 'change'); await sleep(20); flush();
       continue;
     }
@@ -192,7 +269,7 @@ async function bootPage(html, opts = {}) {
     const idText = (el.id + ' ' + el.className + ' ' + (el.textContent || '').trim().slice(0, 30)).toLowerCase(); if (/export|download|legend|learn|help|close|modal|reset|cal now|cal-now/.test(idText)) continue;
     // wheel
     const vis0 = snapshotVisual(el);
-    const rw = await diffAfter(() => { fire(el, 'wheel', { deltaY: -100 }); }); let kw = single(rw.changed);
+    const rw = await diffAfter(() => { fire(el, 'wheel', { deltaY: -100 }); }); let kw = isMacro(rw.changed) ? null : single(rw.changed);
     if (!kw && rw.posts && rw.posts.length) {   // the wheel reached the DSP but carries no plain value: follow the control's visual state
       const ind = findIndicator(el, vis0);
       if (ind && !junkControl(el)) {
@@ -215,11 +292,30 @@ async function bootPage(html, opts = {}) {
     }
     if (kw) {
       const step = rw.changed[kw].to - rw.changed[kw].from; let lo = rw.after[kw], hi = rw.after[kw];
-      for (let i = 0; i < 400; i++) { const r = await diffAfter(() => fire(el, 'wheel', { deltaY: -100 })); if (!r.changed[kw]) break; hi = r.changed[kw].to; }
-      for (let i = 0; i < 800; i++) { const r = await diffAfter(() => fire(el, 'wheel', { deltaY: 100 })); if (!r.changed[kw]) break; lo = r.changed[kw].to; }
-      consider(kw, { selector: sel, kind: 'wheel', step: Math.abs(step), min: lo, max: hi, quality: 7 }); probeLog.push(`${sel}: wheel -> ${kw} step ${step} range [${lo}, ${hi}]`);
+      const up = [rw.changed[kw].from, rw.after[kw]], down = [];   // every value the key takes, in wheel-up order (a lookup-table knob is not evenly spaced)
+      for (let i = 0; i < 400; i++) { const r = await diffAfter(() => fire(el, 'wheel', { deltaY: -100 })); if (!r.changed[kw]) break; hi = r.changed[kw].to; up.push(hi); }
+      for (let i = 0; i < 800; i++) { const r = await diffAfter(() => fire(el, 'wheel', { deltaY: 100 })); if (!r.changed[kw]) break; lo = r.changed[kw].to; down.push(lo); }
+      const near = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b)); const idxOf = (arr, v) => arr.findIndex(x => near(x, v));   // float noise between the up and down sweeps
+      const seq = [...down.slice().reverse(), ...up.filter(v => idxOf(down, v) < 0)].filter((v, i, a) => idxOf(a, v) === i);
+      const diffs = seq.slice(1).map((v, i) => v - seq[i]); const even = diffs.length > 0 && diffs.every(d => Math.abs(Math.abs(d) - Math.abs(diffs[0])) <= 1e-6 * Math.max(1, Math.abs(diffs[0])) && Math.sign(d) === Math.sign(diffs[0]));
+      const vmin = Math.min(...seq), vmax = Math.max(...seq);
+      consider(kw, Object.assign({ selector: sel, kind: 'wheel', step: Math.abs(step), min: vmin, max: vmax, quality: 7 }, even ? {} : { seq }));
+      probeLog.push(`${sel}: wheel -> ${kw} ${even ? `step ${step} range [${vmin}, ${vmax}]` : `${seq.length} stepped values ${JSON.stringify(seq)} (not evenly spaced: exposed as a choice)`}`);
       // restore towards boot value
-      const target = lastParams[kw]; if (typeof target === 'number') { const ticks = Math.round((target - lo) / Math.abs(step)); for (let i = 0; i < ticks; i++) fire(el, 'wheel', { deltaY: -100 }); await sleep(20); flush(); }
+      // restore towards the boot value one awaited tick at a time: knobs with wheel acceleration treat a burst of events as one big move
+      // Walk back to the boot value one awaited tick at a time, re-reading the value each time and reversing when the page's
+      // wheel acceleration overshoots. If it cannot be reached exactly the page is re-created before the next probe.
+      const target = lastParams[kw];
+      if (typeof target === 'number') {
+        let cur = paramsNow()[kw], guard = 0, reached = false;
+        while (guard++ < seq.length * 3 + 8) {
+          const ci = idxOf(seq, cur), ti = idxOf(seq, target); let dir;
+          if (ci >= 0 && ti >= 0) { if (ci === ti) { reached = true; break; } dir = ci < ti ? -100 : 100; }
+          else { if (Math.abs(cur - target) <= Math.abs(step) / 2) { reached = true; break; } dir = (cur < target) === (seq[seq.length - 1] > seq[0]) ? -100 : 100; }
+          const r = await diffAfter(() => fire(el, 'wheel', { deltaY: dir })); if (!r.changed[kw]) break; cur = r.changed[kw].to;
+        }
+        if (!reached && !near(paramsNow()[kw], target)) { dirty = true; probeLog.push(`${sel}: could not wheel ${kw} back to its boot value ${target} (at ${paramsNow()[kw]}); page re-created`); }
+      }
     }
     // pointer drag (vertical): small drag to detect, then slam to both ends to learn the page's clamps, then restore the boot value
     let dragEvents = 'pointer';
@@ -233,7 +329,7 @@ async function bootPage(html, opts = {}) {
     if (!Object.keys(rp.changed).length) { dragPx = 200; rp = await diffAfter(() => pd(dragPx)); } // coarse-stepped knobs need more travel before they tick
     if (!Object.keys(rp.changed).length) { dragEvents = 'mouse'; dragPx = 20; rp = await diffAfter(() => pd(dragPx)); if (!Object.keys(rp.changed).length) { dragPx = 200; rp = await diffAfter(() => pd(dragPx)); } } // pages on mousedown/mousemove instead of pointer events
     const kp = single(rp.changed, hint);
-    if (!kp && /hit|knob/i.test(String(el.className))) probeLog.push(`${sel} (${hint}): drag -> nothing ${JSON.stringify(rp.changed)}`);
+    if (!kp && /hit|knob/i.test(String(el.className))) probeLog.push(`${sel} (${hint}): drag -> nothing ${JSON.stringify(rp.changed)}${rp.err ? ' error: ' + rp.err : ''}${process.env.H2P_DEBUG ? ' state ' + JSON.stringify(paramsNow()) : ''}`);
     if (kp) {
       const perPx = (rp.changed[kp].to - rp.changed[kp].from) / dragPx;
       await diffAfter(() => pd(4000)); let hi = paramsNow()[kp]; await diffAfter(() => pd(-8000)); let lo = paramsNow()[kp];
@@ -338,4 +434,4 @@ async function bootPage(html, opts = {}) {
   return { bootOps, modules, unresolvedModules, addModuleUrls, workletIds, bootParams: lastParams, structuralOnly, structuralPosts, bindings, probeLog, startControl, errors, consoleLog, title, uiSize };
 }
 
-module.exports = { bootPage, flattenParams };
+module.exports = { bootPage, flattenParams, syntheticWavBytes };

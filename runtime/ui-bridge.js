@@ -18,7 +18,12 @@
     if (!data || typeof data !== 'object' || Array.isArray(data)) return into;
     const kf = ['name', 'key', 'id', 'param', 'parameter'].find(k => typeof data[k] === 'string'); const vf = ['value', 'val', 'v'].find(k => typeof data[k] === 'number' || typeof data[k] === 'boolean');
     if (kf && vf) { into[data[kf]] = +data[vf]; return into; }
-    for (const k in data) { const v = data[k]; if (k === 'type') continue; if (typeof v === 'number' || typeof v === 'boolean') into[k] = +v; else if (v && typeof v === 'object' && !Array.isArray(v)) flatten(v, into); }
+    for (const k in data) {
+      const v = data[k]; if (k === 'type') continue;
+      if (typeof v === 'number' || typeof v === 'boolean') into[k] = +v;
+      else if (Array.isArray(v)) { if (v.length >= 1 && v.length <= 8 && v.every(x => typeof x === 'number' || typeof x === 'boolean')) v.forEach((x, i) => { into[v.length === 2 ? k + (i === 0 ? '_L' : '_R') : k + '_' + (i + 1)] = +x; }); }   // {input:[L,R]} -> input_L / input_R, same naming as the forge and engine
+      else if (v && typeof v === 'object') flatten(v, into);
+    }
     return into;
   }
   H.onPost = data => flatten(data, current);
@@ -44,6 +49,7 @@
       case 'state-choice': { const i = b.options.findIndex(o => { const e = document.querySelector(o.selector); return e && e.classList.contains(b.className); }); return i < 0 ? null : i; }
       case 'state-toggle': { const e = document.querySelector(b.selector); return e ? (e.classList.contains(b.className) ? 1 : 0) : null; }
       case 'select': { if (!b.uiParam) return null; const e = document.querySelector(b.selector); return e ? e.selectedIndex : null; }
+      case 'range-ui': { const e = document.querySelector(b.selector); if (!e) return null; const v = parseFloat(e.value); return isFinite(v) ? v : null; }
     }
     return null;
   };
@@ -65,6 +71,7 @@
     applying = true;
     try {
       switch (b.kind) {
+        case 'range-ui': { const v = b.step ? Math.round(value / b.step) * b.step : value; if (Math.abs(parseFloat(el.value) - v) < 1e-9) { lastVisual[name] = v; return true; } el.value = String(v); fire(el, 'input'); fire(el, 'change'); lastVisual[name] = parseFloat(el.value); return true; }
         case 'range': { const v = (value - (b.offset || 0)) / (b.scale || 1); el.value = String(b.step ? Math.round(v / b.step) * b.step : v); fire(el, 'input'); fire(el, 'change'); return true; }
         case 'wheel-visual': { const cur = readVisual(b); if (cur == null) return false; const ticks = Math.round((value - cur) * b.ticks); const dir = ticks < 0 ? 100 : -100; for (let i = 0; i < Math.min(Math.abs(ticks), b.ticks + 5); i++) fire(el, 'wheel', { deltaY: dir, deltaMode: 0 }); lastVisual[name] = readVisual(b); return true; }
         case 'state-choice': { const idx = Math.max(0, Math.min(b.options.length - 1, Math.round(value))); if (readVisual(b) !== idx) { const btn = document.querySelector(b.options[idx].selector); if (!btn) return false; btn.click(); } lastVisual[name] = idx; return true; }
@@ -76,7 +83,8 @@
         case 'click-toggle': { const opts = b.values.map(v => ({ v })); const want = nearest(opts, value, 'v').v; if (!sameOption(opts, 'v', current[name], want)) el.click(); return true; }
         case 'click-set': { if (!near(current[name], b.value) && Math.abs(value - b.value) < 1e-9) el.click(); return true; }
         case 'click-cycle': { for (let i = 0; i < b.values.length + 1 && !near(current[name], value); i++) el.click(); return true; }
-        case 'wheel': { const cur = current[name]; if (typeof cur !== 'number' || !b.step) return false; const ticks = Math.round((value - cur) / b.step); const dir = ticks < 0 ? 100 : -100; for (let i = 0; i < Math.min(Math.abs(ticks), 400); i++) fire(el, 'wheel', { deltaY: dir, deltaMode: 0 }); return true; }
+        case 'wheel': { const cur = current[name]; if (typeof cur !== 'number' || !b.step) return false;
+          const ticks = b.seq ? b.seq.indexOf(nearest(b.seq.map(v => ({ v })), value, 'v').v) - b.seq.indexOf(nearest(b.seq.map(v => ({ v })), cur, 'v').v) : Math.round((value - cur) / b.step); const dir = ticks < 0 ? 100 : -100; for (let i = 0; i < Math.min(Math.abs(ticks), 400); i++) fire(el, 'wheel', { deltaY: dir, deltaMode: 0 }); return true; }
         case 'drag': {
           const cur = current[name]; if (typeof cur !== 'number' || !b.unitsPerPixelUp) return false;
           if (Math.abs(value - cur) <= Math.abs(b.wheelStep || b.unitsPerPixelUp) * 1e-3) return true;   // already there: no synthetic gesture (a gesture makes the page re-post its params)
@@ -111,13 +119,36 @@
   H.applyHostParams = (obj) => { const res = {}; for (const k in obj) res[k] = setFromHost(k, obj[k]); return res; };
 
   // auto-start: the page may gate its graph behind a POWER/START control (mic permission in the browser). Press it for the user.
+  // File-player pages (Load -> decode -> Play) get the same synthetic WAV the forge used (keep in sync with forge/boot.js
+  // syntheticWavBytes); the DAW track replaces the file inside the engine, so what the page decodes never reaches the output.
+  function syntheticWav(sampleRate) {
+    const sr = sampleRate || 48000, frames = Math.round(sr * 0.5), ch = 2, bps = 2;
+    const ab = new ArrayBuffer(44 + frames * ch * bps), dv = new DataView(ab);
+    const str = (o, t) => { for (let i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); };
+    str(0, 'RIFF'); dv.setUint32(4, 36 + frames * ch * bps, true); str(8, 'WAVE'); str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, ch, true);
+    dv.setUint32(24, sr, true); dv.setUint32(28, sr * ch * bps, true); dv.setUint16(32, ch * bps, true); dv.setUint16(34, 16, true); str(36, 'data'); dv.setUint32(40, frames * ch * bps, true);
+    for (let i = 0; i < frames; i++) { const v = Math.round(Math.sin(2 * Math.PI * 1000 * i / sr) * 0.1 * 32767); dv.setInt16(44 + i * 4, v, true); dv.setInt16(46 + i * 4, v, true); }
+    return ab;
+  }
+  function feedFile(kind, el) {
+    const ab = syntheticWav(manifest.captureSampleRate || 48000);
+    const file = new File([ab], (manifest.ui && manifest.ui.startFileName) || 'h2p-input.wav', { type: 'audio/wav' });
+    if (typeof file.arrayBuffer !== 'function') { try { file.arrayBuffer = () => Promise.resolve(ab.slice(0)); } catch (e) { } }   // jsdom (golden test) lacks Blob.arrayBuffer
+    let dt = null, files; try { dt = new DataTransfer(); dt.items.add(file); files = dt.files; } catch (e) { files = { 0: file, length: 1, item: i => (i === 0 ? file : null), [Symbol.iterator]: function* () { yield file; } }; dt = { files, items: [{ kind: 'file', type: file.type, getAsFile: () => file }], types: ['Files'], getData: () => '', setData() { } }; }
+    if (kind === 'file') { let set = false; try { el.files = files; set = el.files === files || (el.files && el.files.length === 1); } catch (e) { } if (!set) { try { Object.defineProperty(el, 'files', { configurable: true, get: () => files }); } catch (e2) { } } el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
+    else for (const type of ['dragenter', 'dragover', 'drop']) { let ev; try { ev = new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }); } catch (e) { ev = new Event(type, { bubbles: true, cancelable: true }); try { Object.defineProperty(ev, 'dataTransfer', { value: dt }); } catch (e2) { } } el.dispatchEvent(ev); }
+    log('fed synthetic file via', kind, manifest.ui.startSelector);
+  }
   function autoStart() {
     const sel = manifest.ui && manifest.ui.startSelector; if (!sel) return;
-    let tries = 0; const t = setInterval(() => {
+    const kind = (manifest.ui && manifest.ui.startKind) || 'click';
+    let tries = 0, fed = false; const t = setInterval(() => {
       tries++; const el = document.querySelector(sel);
       const booted = H.contexts.length > 0 && H.nodesById.size > 1;
       if (booted || tries > 40) { clearInterval(t); return; }
-      if (el) { el.click(); log('auto-pressed', sel); const extra = (manifest.ui.startClicks || 1) - 1; for (let i = 0; i < extra; i++) setTimeout(() => { el.click(); log('auto-pressed again (restore state)', sel); }, 250 * (i + 1)); }
+      if (!el) return;
+      if (kind === 'file' || kind === 'drop') { if (!fed || tries % 10 === 0) { fed = true; try { feedFile(kind, el); } catch (e) { log('feedFile failed', e); } } return; }
+      el.click(); log('auto-pressed', sel); const extra = (manifest.ui.startClicks || 1) - 1; for (let i = 0; i < extra; i++) setTimeout(() => { el.click(); log('auto-pressed again (restore state)', sel); }, 250 * (i + 1));
     }, 150);
   }
   if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(autoStart, 50); else window.addEventListener('DOMContentLoaded', () => setTimeout(autoStart, 50));

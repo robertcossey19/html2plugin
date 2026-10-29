@@ -78,6 +78,15 @@ async function forge(inputHtml, options = {}) {
   if (eng.errors.length) warnings.push('engine errors during smoke render: ' + eng.errors.slice(0, 3).join(' | '));
   if (!isFinite(outDb) || rms === 0) warnings.push('smoke render produced silence for a -20 dBFS 1 kHz tone (check that the page routes input -> worklet -> destination without a user action we could not detect)');
   const msgs = eng.drainOutbox();
+  // Hard gate: a graph that never reaches the destination would ship as a bit-exact pass-through and fail HostTest 25 minutes
+  // later on the Mac runner. Fail here, in the forge job, with what was tried.
+  const graph = eng.describe();
+  if (graph.passThrough) {
+    const tried = (boot.probeLog || []).filter(l => /graph is built|no button|start control|auto-press/i.test(l)).slice(0, 6);
+    throw new Error(`The page never connected anything to the AudioContext destination during the headless boot (worklet nodes created: ${boot.bootOps.filter(o => o.op === 'create' && o.type === 'AudioWorklet').length}, ops: ${boot.bootOps.length}). ` +
+      `The plugin would pass audio through untouched. Tried: button auto-start, feeding a WAV to every <input type=file>, dropping a WAV on every element with an id. ${tried.length ? 'Boot log: ' + tried.join(' | ') : ''} ` +
+      `Page errors: ${boot.errors.slice(0, 3).join(' | ') || 'none'}`);
+  }
   const smoke = { inputDbfs: -20, outputDbfs: +outDb.toFixed(2), realtimeFactor: +(renderMs / 1000).toFixed(3), messagesFromWorklet: msgs.length, messageTypes: [...new Set(msgs.map(m => m.data && m.data.type).filter(Boolean))] };
   // 4. parameter table: descriptors ∪ keys of boot messages; types from bindings
   const names = new Set(); for (const d of Object.values(processors)) for (const p of d) names.add(p.name); for (const k in boot.bindings) if (boot.bindings[k].uiParam) names.add(k); for (const k of Object.keys(boot.bootParams)) { if (boot.structuralOnly && boot.structuralOnly[k] && !boot.bindings[k]) { log.push(`param ${k}: only appears inside a structural (model/netlist) message and no UI control drives it -> not a host parameter`); continue; } names.add(k); }
@@ -87,6 +96,7 @@ async function forge(inputHtml, options = {}) {
     let p = { id, name: humanize(id), type: 'float', min: desc ? desc.minValue : undefined, max: desc ? desc.maxValue : undefined, default: bootV != null ? bootV : (desc ? desc.defaultValue : 0), source: desc ? (bootV != null ? 'descriptor+message' : 'descriptor') : 'message', binding: b };
     if (b && b.uiParam) { const u = b.uiParam; p = { id, name: u.name || humanize(id), type: u.type, min: u.min, max: u.max, default: u.default, source: 'ui-state', binding: b }; if (u.type === 'choice') p.choices = u.choices; if (u.type === 'bool') { p.min = 0; p.max = 1; } params.push(p); continue; }
     if (b && (b.kind === 'choice' || b.kind === 'select')) { p.type = 'choice'; p.choices = b.options.map(o => ({ label: o.label, value: o.param !== undefined ? o.param : o.value })); }
+    else if (b && b.kind === 'wheel' && b.seq && b.seq.length >= 2 && b.seq.length <= 64) { p.type = 'choice'; p.choices = b.seq.map(v => ({ label: String(+(+v).toPrecision(6)), value: v })); }   // stepped lookup-table knob: only its own values are reachable
     else if (b && (b.kind === 'click-toggle' || b.kind === 'checkbox')) { const vals = b.kind === 'checkbox' ? [b.offValue, b.onValue] : b.values.slice().sort((x, y) => x - y); if (vals.length === 2 && vals[0] === 0 && vals[1] === 1) p.type = 'bool'; else { p.type = 'choice'; p.choices = vals.map(v => ({ label: String(v), value: v })); } }
     else { if (b && b.min != null && (p.min == null || !isFinite(p.min))) p.min = b.min; if (b && b.max != null && (p.max == null || !isFinite(p.max))) p.max = b.max; if (b && b.kind === 'range') { p.step = b.step || 0; } }
     if (p.type === 'float' && (p.min == null || !isFinite(p.min) || p.max == null || !isFinite(p.max))) {
@@ -101,11 +111,11 @@ async function forge(inputHtml, options = {}) {
   const bound = params.filter(p => p.binding).length;
   const manifest = {
     name: title, slug, vendor: options.vendor || 'html2plugin', version: options.version || '1.0.0', bundleId: `com.html2plugin.${slug.replace(/-/g, '')}`, ...codes(slug),
-    ui: { width: Math.min(Math.max(boot.uiSize.width, 700), 1600), height: Math.min(Math.max(boot.uiSize.height, 500), 1100), startSelector: boot.startControl ? boot.startControl.selector : null, startClicks: boot.startControl ? (boot.startControl.clicks || 1) : 1 },
+    ui: { width: Math.min(Math.max(boot.uiSize.width, 700), 1600), height: Math.min(Math.max(boot.uiSize.height, 500), 1100), startSelector: boot.startControl ? boot.startControl.selector : null, startKind: boot.startControl ? (boot.startControl.kind || 'click') : null, startFileName: boot.startControl && boot.startControl.name || null, startClicks: boot.startControl ? (boot.startControl.clicks || 1) : 1 },
     captureSampleRate: sampleRate, processors, params, bootOps: boot.bootOps, bindings: boot.bindings,
     // model/netlist messages cannot be synthesised from one host value: keep the page alive inside the processor so automation
     // with the editor closed still runs through the page's own code (exact DSP) instead of a value-swapped replay
-    residentPage: (boot.structuralPosts || 0) > 0,
+    residentPage: (boot.structuralPosts || 0) > 0 || params.some(p => p.source === 'ui-state'),
     // the plugin enables WebAssembly in its JavaScriptCore only for pages that use it (worklet source or a module travelling in a message)
     usesWasm: /WebAssembly/.test(modules.map(m => typeof m === 'string' ? m : (m.source || '')).join('\n')) || /"__wasm"/.test(JSON.stringify(boot.bootOps)),
     report: { boundParams: bound, totalParams: params.length, unboundParams: params.filter(p => !p.binding).map(p => p.id), startControl: boot.startControl, smoke, pageErrors: boot.errors.slice(0, 10), pageConsole: boot.consoleLog.slice(0, 10), warnings, unsupported, log, probeLog: boot.probeLog || [] },
@@ -146,7 +156,7 @@ function writeProject(outDir, result) {
 function report(m) {
   const r = m.report; const lines = [`# ${m.name} — conversion report`, '', `- Slug: \`${m.slug}\`  Codes: manufacturer \`${m.manufacturerCode}\`, plugin \`${m.pluginCode}\`  Bundle: \`${m.bundleId}\``,
     `- AudioWorklet processors: ${Object.keys(m.processors).map(k => `\`${k}\` (${m.processors[k].length} descriptors)`).join(', ')}`,
-    `- Boot graph ops recorded: ${m.bootOps.length}; start control: ${r.startControl ? `\`${r.startControl.selector}\` ("${r.startControl.text}") auto-pressed` : 'none needed'}`,
+    `- Boot graph ops recorded: ${m.bootOps.length}; start control: ${r.startControl ? (r.startControl.kind === 'file' || r.startControl.kind === 'drop' ? `\`${r.startControl.selector}\` fed a synthetic WAV (${r.startControl.text}); the DAW input replaces the file` : `\`${r.startControl.selector}\` ("${r.startControl.text}") auto-pressed`) : 'none needed'}`,
     `- Smoke render (−20 dBFS 1 kHz, boot state): output ${r.smoke.outputDbfs} dBFS, ${r.smoke.messagesFromWorklet} messages (${r.smoke.messageTypes.join(', ')}), Node/V8 render cost ${(r.smoke.realtimeFactor * 100).toFixed(1)} % of realtime`,
     `- Host parameters: ${r.totalParams}; two-way UI binding confirmed for ${r.boundParams}${r.unboundParams.length ? `; DSP-only (no UI control found): ${r.unboundParams.join(', ')}` : ''}`,
     `- Parameter path: ${m.residentPage ? 'resident page (the page sends model/netlist messages; it stays loaded inside the processor so host automation reaches the DSP through the page\'s own code even with the editor closed)' : 'engine replay (parameters are plain message values / AudioParams; no page needed while the editor is closed)'}`, '', '## Parameters', '', '| id | type | range / choices | default | UI control | binding |', '|---|---|---|---|---|---|'];

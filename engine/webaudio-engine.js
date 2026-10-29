@@ -386,6 +386,7 @@
     /* Render one 128-frame quantum: inL/inR -> outL/outR. */
     renderQuantum() {
       this.tick++; const d = this.destination;
+      if (this._wireDirty) { this._wireDirty = false; this._autoInput(); }
       if (!d.inputs[0] || d.inputs[0].length === 0) { this.outL.set(this.inL); this.outR.set(this.inR); }  // empty graph => pass-through, never silence
       else { d._pull(0); this.outL.set(d.outBufs[0][0]); this.outR.set(d.outBufs[0][1]); }
       this.currentFrame += Q; this.currentTime = this.currentFrame / this.sampleRate;
@@ -415,6 +416,7 @@
     /* -------- RPC replay (ops recorded by the WebView shim) -------- */
     applyOp(op) {
       try {
+        if (op.op === 'create' || op.op === 'connect' || op.op === 'disconnect' || op.op === 'reset') this._wireDirty = true;
         switch (op.op) {
           case 'addModule': return this.addModule(op.code);
           case 'create': {
@@ -463,6 +465,7 @@
     }
     /* ---- diagnostics: a compact picture of the live graph (for logs / HostTest) ---- */
     describe() {
+      if (this._wireDirty) { this._wireDirty = false; this._autoInput(); }
       const idOf = n => { for (const k in (this.alias || {})) if (this.alias[k] === n) return +k; return n === this.destination ? 'dest' : n === this.input ? 'in' : n.id; };
       const nodes = this.nodes.map(n => ({
         id: idOf(n), type: n.constructor.name + (n.name ? '(' + n.name + ')' : ''),
@@ -487,7 +490,14 @@
       const scan = (o, path) => {
         const kf = KEYF.find(k => typeof o[k] === 'string'), vf = VALF.find(k => typeof o[k] === 'number' || typeof o[k] === 'boolean');
         if (kf && vf) { const nm = o[kf]; T[nm] = { msg: data, path: path.concat(vf) }; if (names.indexOf(nm) >= 0) { found[nm] = +o[vf]; any = true; } return; }
-        for (const k in o) { const v = o[k]; if (typeof v === 'number' || typeof v === 'boolean') { T[k] = { msg: data, path: path.concat(k) }; if (names.indexOf(k) >= 0) { found[k] = +v; any = true; } } else if (v && typeof v === 'object' && !Array.isArray(v)) scan(v, path.concat(k)); }
+        for (const k in o) {
+          const v = o[k];
+          if (typeof v === 'number' || typeof v === 'boolean') { T[k] = { msg: data, path: path.concat(k) }; if (names.indexOf(k) >= 0) { found[k] = +v; any = true; } }
+          else if (Array.isArray(v)) { // {input:[L,R]} -> input_L / input_R (same naming as the forge's flattenParams)
+            if (v.length >= 1 && v.length <= 8 && v.every(x => typeof x === 'number' || typeof x === 'boolean')) v.forEach((x, i) => { const nm = v.length === 2 ? k + (i === 0 ? '_L' : '_R') : k + '_' + (i + 1); T[nm] = { msg: data, path: path.concat(k, i) }; if (names.indexOf(nm) >= 0) { found[nm] = +x; any = true; } });
+          }
+          else if (v && typeof v === 'object') scan(v, path.concat(k));
+        }
       };
       scan(data, []); if (any && names.length) this.outbox.push({ id: -2, data: { type: '__hostParams', values: found } });
     }
@@ -519,7 +529,7 @@
     _idOf(n) { if (this.alias) for (const k in this.alias) if (this.alias[k] === n) return k; return n.id; }
     drainOutbox() { const o = this.outbox; this.outbox = []; for (const m of o) { try { m.data = serializeMessage(m.data); } catch (e) { m.data = { type: '__error', message: 'unserialisable worklet message: ' + e.message }; } } return o; }
     /* -------- string-based entry points for the native (JavaScriptCore) host -------- */
-    applyJSON(str) { let ops; try { ops = JSON.parse(str); } catch (e) { this._error('bad op JSON: ' + e.message); return; } if (!Array.isArray(ops)) ops = [ops]; for (const op of ops) this.applyOp(op); this._autoInput(); }
+    applyJSON(str) { let ops; try { ops = JSON.parse(str); } catch (e) { this._error('bad op JSON: ' + e.message); return; } if (!Array.isArray(ops)) ops = [ops]; for (const op of ops) this.applyOp(op); this._wireDirty = false; this._autoInput(); }
     /* Pages that only wire the source after a user action (mic picker, file drop) boot as `worklet -> destination` with the
        worklet's input unconnected. In a plugin the host track IS the source: feed it into every input-bearing node that is
        reachable from the destination but has nothing connected, unless the page already routed ctx.input somewhere itself. */
